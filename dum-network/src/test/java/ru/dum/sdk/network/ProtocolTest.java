@@ -20,6 +20,15 @@ class ProtocolTest {
     }
 
     @Test
+    void moduleRoundTrip() {
+        for (byte[] data : new byte[][]{{}, {0, 1, -1}, new byte[30_000]}) {
+            Message.Module decoded = (Message.Module) Protocol.decode(Protocol.encode(new Message.Module("info", data)));
+            assertEquals("info", decoded.module());
+            assertArrayEquals(data, decoded.data());
+        }
+    }
+
+    @Test
     void helloStartsWithProtocolVersion() {
         // Type byte, then the protocol as a big-endian int: older and newer servers rely on this layout
         byte[] data = Protocol.encode(new Message.Hello(0x01020304, "x"));

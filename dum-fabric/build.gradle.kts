@@ -14,6 +14,8 @@ dependencies {
 }
 
 loom {
+    accessWidenerPath = file("src/main/resources/dum-sdk.classtweaker")
+
     runs.named("client") {
         // ./gradlew runClient -Pjoin=localhost connects straight to a server
         if (project.hasProperty("join")) {

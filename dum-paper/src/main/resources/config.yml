@@ -5,3 +5,8 @@
 handshake:
   enabled: true
   hello-timeout-seconds: 10   # how long to wait for the client's HELLO
+
+# Server side of the "info" client module: accessory slots for a compass and a clock next to the inventory.
+# The items are kept in the player's data and drop on death like the rest of the inventory.
+accessories:
+  enabled: true

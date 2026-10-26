@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.impl.networking.RegistrationPayload;
@@ -43,6 +44,9 @@ public final class DumSdkClient implements ClientModInitializer {
         PayloadTypeRegistry.serverboundConfiguration().register(SdkPayload.TYPE, SdkPayload.CODEC);
         PayloadTypeRegistry.clientboundConfiguration().register(SdkPayload.TYPE, SdkPayload.CODEC);
         ClientConfigurationNetworking.registerGlobalReceiver(SdkPayload.TYPE, (payload, context) -> receive(payload));
+        PayloadTypeRegistry.serverboundPlay().register(SdkPayload.TYPE, SdkPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(SdkPayload.TYPE, SdkPayload.CODEC);
+        ClientPlayNetworking.registerGlobalReceiver(SdkPayload.TYPE, (payload, context) -> receive(payload));
 
         ClientConfigurationConnectionEvents.START.register((listener, client) -> {
             serverVersion = null;
@@ -76,12 +80,15 @@ public final class DumSdkClient implements ClientModInitializer {
             LOG.warn("Ignoring a malformed message from the server", e);
             return;
         }
-        if (message instanceof Message.Welcome welcome) {
-            serverVersion = welcome.serverVersion();
-            LOG.info("Connected to DUM-SDK server {} (protocol {})", welcome.serverVersion(), welcome.protocol());
-            Minecraft.getInstance().execute(MODULES::start);
-        } else {
-            LOG.warn("Ignoring unexpected {} from the server", message);
+        switch (message) {
+            case Message.Welcome welcome -> {
+                serverVersion = welcome.serverVersion();
+                LOG.info("Connected to DUM-SDK server {} (protocol {})", welcome.serverVersion(), welcome.protocol());
+                Minecraft.getInstance().execute(MODULES::start);
+            }
+            // Play-phase payloads already arrive on the render thread
+            case Message.Module module -> MODULES.deliver(module.module(), module.data());
+            case Message.Hello hello -> LOG.warn("Ignoring unexpected {} from the server", hello);
         }
     }
 

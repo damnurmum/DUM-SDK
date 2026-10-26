@@ -4,6 +4,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
+import java.util.function.Consumer;
 
 /**
  * What the SDK gives a running module. Everything registered here is removed when the module is turned off.
@@ -23,4 +24,13 @@ public interface DumContext {
 
     /** Drawn after the vanilla HUD. */
     void hud(HudElement element);
+
+    /** Drawing and clicks on game screens. */
+    void screen(ScreenLayer layer);
+
+    /** Data the server side of this module sends; called on the render thread. One handler per module. */
+    void onServerMessage(Consumer<byte[]> handler);
+
+    /** Sends data to the server side of this module. Dropped when not in a world. */
+    void sendToServer(byte[] data);
 }

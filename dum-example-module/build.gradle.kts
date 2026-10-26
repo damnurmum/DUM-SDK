@@ -3,7 +3,7 @@ plugins {
 }
 
 // A client module, not a Fabric mod: it has its own version and is loaded by DUM-SDK at runtime
-version = "0.1.0"
+version = "0.2.0"
 
 base {
     archivesName = "info"
@@ -24,8 +24,10 @@ tasks {
     }
 
     // ./gradlew :dum-example-module:install puts the module into the dev client (dum-fabric/run)
+    // One file name for every version, so an older one never stays next to it
     register<Copy>("install") {
         from(jar)
         into(rootProject.file("dum-fabric/run/dum-sdk/modules"))
+        rename { "info.jar" }
     }
 }

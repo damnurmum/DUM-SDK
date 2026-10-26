@@ -2,14 +2,19 @@ package ru.dum.sdk.fabric.module;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.version.VersionPredicate;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.dum.sdk.api.DumModule;
+import ru.dum.sdk.api.ScreenLayer;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -47,6 +52,8 @@ public final class ModuleManager {
     private final Path activeMarker = root.resolve("modules-active");
     private final List<RunningModule> running = new CopyOnWriteArrayList<>();
     private boolean safeMode;
+    /** A module consumed the last mouse press, so the screen must not see its release either. */
+    private boolean pressConsumed;
 
     public void init() {
         try {
@@ -60,6 +67,20 @@ public final class ModuleManager {
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("dum-sdk", "modules"),
                 (graphics, delta) -> dispatch(m -> m.huds, hud -> hud.extractRenderState(graphics, delta)));
         ClientTickEvents.END_CLIENT_TICK.register(client -> dispatch(m -> m.ticks, Runnable::run));
+        // Screen events belong to one screen and are recreated on every init
+        ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
+            ScreenEvents.afterBackground(screen).register((s, graphics, mouseX, mouseY, delta) ->
+                    dispatch(m -> m.screens, layer -> layer.extract(s, graphics, mouseX, mouseY, delta)));
+            ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
+                pressConsumed = clickConsumed(s, event);
+                return !pressConsumed;
+            });
+            ScreenMouseEvents.allowMouseRelease(screen).register((s, event) -> {
+                boolean consumed = pressConsumed;
+                pressConsumed = false;
+                return !consumed;
+            });
+        });
     }
 
     public boolean safeMode() {
@@ -82,6 +103,22 @@ public final class ModuleManager {
             } else {
                 LOG.warn("Module {} is not started: a module it depends on failed", candidate.manifest.id());
             }
+        }
+    }
+
+    /** Data from the server side of a module; dropped if that module is not running. */
+    public void deliver(String id, byte[] data) {
+        for (RunningModule module : running) {
+            if (!module.id().equals(id)) continue;
+            var handler = module.serverHandler;
+            if (handler == null) return;
+            try {
+                handler.accept(data);
+            } catch (RuntimeException | LinkageError e) {
+                LOG.error("Module {} failed on a server message, turning it off", id, e);
+                stop(module);
+            }
+            return;
         }
     }
 
@@ -213,8 +250,7 @@ public final class ModuleManager {
         } catch (RuntimeException | LinkageError e) {
             LOG.error("Module {} failed while turning off", module.id(), e);
         }
-        module.ticks.clear();
-        module.huds.clear();
+        module.clear();
         close(module.loader, module.id());
         LOG.info("Module {} is off", module.id());
         if (FabricLoader.getInstance().isDevelopmentEnvironment()) checkUnloaded(module.loader, module.id());
@@ -246,6 +282,21 @@ public final class ModuleManager {
                 LOG.warn("Module {} is still in memory after unloading: something holds a reference to its classes", id);
             }
         });
+    }
+
+    private boolean clickConsumed(Screen screen, MouseButtonEvent event) {
+        for (RunningModule module : running) {
+            for (ScreenLayer layer : module.screens) {
+                try {
+                    if (layer.mouseClicked(screen, event)) return true;
+                } catch (RuntimeException | LinkageError e) {
+                    LOG.error("Module {} failed, turning it off", module.id(), e);
+                    stop(module);
+                    break;
+                }
+            }
+        }
+        return false;
     }
 
     /** Calls every registration of every running module; a module that throws is turned off. */

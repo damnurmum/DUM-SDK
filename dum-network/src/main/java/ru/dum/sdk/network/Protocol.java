@@ -17,10 +17,11 @@ public final class Protocol {
     public static final String CHANNEL = "dum:sdk";
 
     /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
     private static final byte HELLO = 0;
     private static final byte WELCOME = 1;
+    private static final byte MODULE = 2;
 
     private Protocol() {
     }
@@ -39,6 +40,12 @@ public final class Protocol {
                     out.writeInt(protocol);
                     out.writeUTF(serverVersion);
                 }
+                case Message.Module(String module, byte[] payload) -> {
+                    // The data runs to the end of the message
+                    out.writeByte(MODULE);
+                    out.writeUTF(module);
+                    out.write(payload);
+                }
             }
         } catch (IOException e) {
             // ByteArrayOutputStream does not throw
@@ -54,6 +61,7 @@ public final class Protocol {
             Message message = switch (in.readByte()) {
                 case HELLO -> new Message.Hello(in.readInt(), in.readUTF());
                 case WELCOME -> new Message.Welcome(in.readInt(), in.readUTF());
+                case MODULE -> new Message.Module(in.readUTF(), in.readAllBytes());
                 default -> throw new IllegalArgumentException("Unknown message type " + data[0]);
             };
             if (in.available() > 0) {

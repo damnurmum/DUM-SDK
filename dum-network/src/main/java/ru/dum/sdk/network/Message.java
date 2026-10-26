@@ -10,4 +10,8 @@ public sealed interface Message {
     /** Server to client: the handshake is accepted and the player may join. */
     record Welcome(int protocol, String serverVersion) implements Message {
     }
+
+    /** Either way, after the handshake: data for one client module and its server side. The format is up to the module. */
+    record Module(String module, byte[] data) implements Message {
+    }
 }

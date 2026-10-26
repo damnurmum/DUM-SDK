@@ -19,9 +19,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Terraria-like info lines on the right, just above the scoreboard sidebar: a compass gives
- * coordinates and facing, a clock gives the day, the time and how long until night or morning.
- * Same texts as the DUM-Mechanics actionbars.
+ * Terraria-like info accessories. A compass or a clock in the accessory slots ({@link Accessories}) adds
+ * a line on the right, just above the scoreboard sidebar: coordinates and facing, or the day, the time and
+ * how long until night or morning. Same texts as the DUM-Mechanics actionbars.
  */
 public final class InfoModule implements DumModule {
 
@@ -40,8 +40,13 @@ public final class InfoModule implements DumModule {
     private static final TextColor WHITE = TextColor.fromRgb(0xffffff);
     private static final TextColor SEPARATOR = TextColor.fromRgb(0x555555);
 
+    private Accessories accessories;
+
     @Override
     public void onEnable(DumContext context) {
+        accessories = new Accessories(context);
+        context.screen(accessories);
+        context.onServerMessage(accessories::receive);
         context.hud(this::draw);
     }
 
@@ -50,10 +55,9 @@ public final class InfoModule implements DumModule {
         Player player = minecraft.player;
         if (player == null || minecraft.level == null) return;
 
-        // ponytail: shown while the item is anywhere in the inventory; accessory slots come in stage 3
         List<Component> lines = new ArrayList<>(2);
-        if (player.getInventory().contains(stack -> stack.is(Items.COMPASS))) lines.add(compass(player));
-        if (player.getInventory().contains(stack -> stack.is(Items.CLOCK))) lines.add(clock(minecraft.level));
+        if (accessories.equipped(Items.COMPASS)) lines.add(compass(player));
+        if (accessories.equipped(Items.CLOCK)) lines.add(clock(minecraft.level));
         if (lines.isEmpty()) return;
 
         int bottom = sidebarTop(graphics, minecraft.level.getScoreboard()) - 4;

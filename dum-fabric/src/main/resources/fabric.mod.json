@@ -7,6 +7,7 @@
 	"authors": ["DUM"],
 	"license": "MIT",
 	"environment": "client",
+	"accessWidener": "dum-sdk.classtweaker",
 	"entrypoints": {
 		"client": ["ru.dum.sdk.fabric.DumSdkClient"]
 	},

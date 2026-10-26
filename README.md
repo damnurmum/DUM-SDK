@@ -5,6 +5,7 @@ A Fabric client mod and a Paper server plugin that let a server deliver signed c
 Work in progress. Done so far:
 
 - HELLO / WELCOME handshake on the `dum:sdk` channel during the configuration phase. Players without the mod are disconnected before they enter the world.
+- Modules talk to their server side over `dum:sdk` (`DumContext.sendToServer` / `onServerMessage`) and can draw on and take clicks from game screens.
 - Client modules: jars in `.minecraft/dum-sdk/modules` are loaded, each in its own class loader, while connected to a DUM-SDK server, and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode.
 
 ## Layout
@@ -14,7 +15,7 @@ Work in progress. Done so far:
 | `dum-network` | Wire format of the `dum:sdk` channel, shared by both sides |
 | `dum-fabric` | The client mod (Minecraft 26.2, Fabric) |
 | `dum-paper` | The server plugin (Paper 26.2), built on DUM-Core |
-| `dum-example-module` | `info`, a client module: compass and clock lines on the HUD |
+| `dum-example-module` | `info`, a client module: accessory slots for a compass and a clock, and their lines on the HUD (server side: `accessories` in `dum-paper`) |
 
 ## Writing a module
 

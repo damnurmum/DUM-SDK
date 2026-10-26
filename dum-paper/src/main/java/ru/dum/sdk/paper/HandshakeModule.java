@@ -5,11 +5,7 @@ import io.papermc.paper.connection.PlayerConnection;
 import io.papermc.paper.event.connection.configuration.AsyncPlayerConnectionConfigureEvent;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
-import org.bukkit.plugin.messaging.Messenger;
-import org.bukkit.plugin.messaging.PluginMessageListener;
 import ru.dum.core.api.module.Module;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
@@ -26,7 +22,7 @@ import java.util.concurrent.TimeoutException;
  * HELLO / WELCOME in the configuration phase. The player is held there until the client says HELLO;
  * no HELLO in time or an incompatible protocol means a disconnect before entering the world.
  */
-final class HandshakeModule extends Module<DumSdk> implements PluginMessageListener {
+final class HandshakeModule extends Module<DumSdk> {
 
     // HELLO can arrive before or after the configure event starts waiting, so both sides meet here.
     // ponytail: an entry stays if a client says HELLO but disconnects before the configure event; tiny, cleared on restart
@@ -37,30 +33,15 @@ final class HandshakeModule extends Module<DumSdk> implements PluginMessageListe
     }
 
     @Override
-    protected void onEnable() {
-        Messenger messenger = Bukkit.getMessenger();
-        messenger.registerIncomingPluginChannel(plugin, Protocol.CHANNEL, this);
-        messenger.registerOutgoingPluginChannel(plugin, Protocol.CHANNEL);
-    }
-
-    @Override
     protected void onDisable() {
-        Messenger messenger = Bukkit.getMessenger();
-        messenger.unregisterIncomingPluginChannel(plugin, Protocol.CHANNEL, this);
-        messenger.unregisterOutgoingPluginChannel(plugin, Protocol.CHANNEL);
         // Players waiting right now are let in: the check is off
         hellos.values().forEach(hello -> hello.cancel(false));
         hellos.clear();
     }
 
-    @Override
-    public void onPluginMessageReceived(String channel, PlayerConnection connection, byte[] message) {
-        if (connection instanceof PlayerConfigurationConnection) hello(connection).complete(message);
-    }
-
-    @Override
-    public void onPluginMessageReceived(String channel, Player player, byte[] message) {
-        // Nothing is sent in the play phase yet
+    /** A message in the configuration phase: the client's HELLO. */
+    void received(PlayerConnection connection, byte[] message) {
+        hello(connection).complete(message);
     }
 
     private CompletableFuture<byte[]> hello(PlayerConnection connection) {
