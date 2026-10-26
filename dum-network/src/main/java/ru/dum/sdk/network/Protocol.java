@@ -6,6 +6,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Wire format of the dum:sdk channel, shared by the client mod and the server plugin.
@@ -17,11 +19,24 @@ public final class Protocol {
     public static final String CHANNEL = "dum:sdk";
 
     /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
+
+    /** Jar bytes per {@link Message.Chunk}; a plugin message may carry up to 1 MiB. */
+    public static final int CHUNK_SIZE = 512 * 1024;
+
+    /** Largest module jar a client accepts. */
+    public static final int MAX_MODULE_SIZE = 64 * 1024 * 1024;
 
     private static final byte HELLO = 0;
     private static final byte WELCOME = 1;
     private static final byte MODULE = 2;
+    private static final byte CATALOG = 3;
+    private static final byte REQUEST = 4;
+    private static final byte CHUNK = 5;
+    private static final byte READY = 6;
+
+    private static final int SHA256 = 32;
+    private static final int SIGNATURE = 64;
 
     private Protocol() {
     }
@@ -39,6 +54,32 @@ public final class Protocol {
                     out.writeByte(WELCOME);
                     out.writeInt(protocol);
                     out.writeUTF(serverVersion);
+                }
+                case Message.Catalog(List<Message.ModuleInfo> modules) -> {
+                    out.writeByte(CATALOG);
+                    out.writeInt(modules.size());
+                    for (Message.ModuleInfo module : modules) {
+                        out.writeUTF(module.id());
+                        out.writeUTF(module.version());
+                        writeFixed(out, module.sha256(), SHA256);
+                        out.writeInt(module.size());
+                        writeFixed(out, module.signature(), SIGNATURE);
+                    }
+                }
+                case Message.Request(byte[] sha256) -> {
+                    out.writeByte(REQUEST);
+                    writeFixed(out, sha256, SHA256);
+                }
+                case Message.Chunk(byte[] sha256, int offset, byte[] data) -> {
+                    // The data runs to the end of the message
+                    out.writeByte(CHUNK);
+                    writeFixed(out, sha256, SHA256);
+                    out.writeInt(offset);
+                    out.write(data);
+                }
+                case Message.Ready(String error) -> {
+                    out.writeByte(READY);
+                    out.writeUTF(error);
                 }
                 case Message.Module(String module, byte[] payload) -> {
                     // The data runs to the end of the message
@@ -61,6 +102,18 @@ public final class Protocol {
             Message message = switch (in.readByte()) {
                 case HELLO -> new Message.Hello(in.readInt(), in.readUTF());
                 case WELCOME -> new Message.Welcome(in.readInt(), in.readUTF());
+                case CATALOG -> {
+                    int count = in.readInt();
+                    if (count < 0 || count > 1024) throw new IllegalArgumentException("Bad module count " + count);
+                    List<Message.ModuleInfo> modules = new ArrayList<>(count);
+                    for (int i = 0; i < count; i++) {
+                        modules.add(new Message.ModuleInfo(in.readUTF(), in.readUTF(), readFixed(in, SHA256), in.readInt(), readFixed(in, SIGNATURE)));
+                    }
+                    yield new Message.Catalog(List.copyOf(modules));
+                }
+                case REQUEST -> new Message.Request(readFixed(in, SHA256));
+                case CHUNK -> new Message.Chunk(readFixed(in, SHA256), in.readInt(), in.readAllBytes());
+                case READY -> new Message.Ready(in.readUTF());
                 case MODULE -> new Message.Module(in.readUTF(), in.readAllBytes());
                 default -> throw new IllegalArgumentException("Unknown message type " + data[0]);
             };
@@ -71,5 +124,16 @@ public final class Protocol {
         } catch (IOException e) {
             throw new IllegalArgumentException("Truncated message", e);
         }
+    }
+
+    private static void writeFixed(DataOutputStream out, byte[] bytes, int length) throws IOException {
+        if (bytes.length != length) throw new IllegalArgumentException("Expected " + length + " bytes, got " + bytes.length);
+        out.write(bytes);
+    }
+
+    private static byte[] readFixed(DataInputStream in, int length) throws IOException {
+        byte[] bytes = new byte[length];
+        in.readFully(bytes);
+        return bytes;
     }
 }

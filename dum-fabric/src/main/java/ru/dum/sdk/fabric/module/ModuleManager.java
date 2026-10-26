@@ -31,11 +31,10 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.stream.Stream;
 
 /**
- * Client modules from {@code .minecraft/dum-sdk/modules}: they are loaded, each in its own class loader,
- * when a DUM-SDK server accepts us, and unloaded when we leave. Fabric events cannot be unregistered,
+ * Client modules installed from the server ({@link ModuleInstaller}): they are loaded, each in its own class loader,
+ * once the configuration phase has them in place, and unloaded when we leave. Fabric events cannot be unregistered,
  * so the SDK registers each hook once and passes it on to the running modules.
  * Everything except {@link #init} runs on the render thread.
  */
@@ -46,18 +45,22 @@ public final class ModuleManager {
 
     private static final Logger LOG = LoggerFactory.getLogger("DUM-SDK");
 
-    private final Path root = FabricLoader.getInstance().getGameDir().resolve("dum-sdk");
-    private final Path modulesDir = root.resolve("modules");
+    private final Path root;
     /** Exists while modules run. Left behind after a crash, it turns the next launch into safe mode. */
-    private final Path activeMarker = root.resolve("modules-active");
+    private final Path activeMarker;
     private final List<RunningModule> running = new CopyOnWriteArrayList<>();
     private boolean safeMode;
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
 
+    public ModuleManager(Path root) {
+        this.root = root;
+        this.activeMarker = root.resolve("modules-active");
+    }
+
     public void init() {
         try {
-            Files.createDirectories(modulesDir);
+            Files.createDirectories(root);
             safeMode = Files.deleteIfExists(activeMarker);
         } catch (IOException e) {
             LOG.error("Cannot prepare {}", root, e);
@@ -87,10 +90,10 @@ public final class ModuleManager {
         return safeMode;
     }
 
-    /** Loads and turns on every installed module that can run. */
-    public void start() {
+    /** Loads and turns on every module of these jars that can run. */
+    public void start(List<Path> jars) {
         if (safeMode || !running.isEmpty()) return;
-        List<Candidate> order = resolve(scan());
+        List<Candidate> order = resolve(scan(jars));
         if (order.isEmpty()) return;
         try {
             Files.writeString(activeMarker, String.join("\n", order.stream().map(c -> c.manifest.id()).toList()));
@@ -139,15 +142,8 @@ public final class ModuleManager {
     private record Candidate(ModuleManifest manifest, Path jar) {
     }
 
-    private Map<String, Candidate> scan() {
+    private Map<String, Candidate> scan(List<Path> jars) {
         Map<String, Candidate> found = new LinkedHashMap<>();
-        List<Path> jars;
-        try (Stream<Path> files = Files.list(modulesDir)) {
-            jars = files.filter(p -> p.toString().endsWith(".jar")).sorted().toList();
-        } catch (IOException e) {
-            LOG.error("Cannot list {}", modulesDir, e);
-            return found;
-        }
         for (Path jar : jars) {
             ModuleManifest manifest;
             try {

@@ -21,6 +21,10 @@ loom {
         if (project.hasProperty("join")) {
             programArgs("--quickPlayMultiplayer", project.property("join").toString())
         }
+        // ./gradlew runClient -Prelease behaves like a player's client: modules signed with the dev key are refused
+        if (project.hasProperty("release")) {
+            vmArg("-Ddumsdk.release=true")
+        }
     }
 }
 

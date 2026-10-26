@@ -1,5 +1,10 @@
 # DUM-SDK player texts (MiniMessage, same as DUM-Core).
 
+core:
+  # /dumsdk. <modules>: the client modules this server hands out
+  info: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <gradient:#ffe29f:#ffc078>Версия <white><version></white>, протокол <white><protocol></white>, модули: <white><modules>"
+  reloaded: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <gradient:#ffe29f:#ffc078>Перезагружен, модулей: <white><count></white>. Игроки на сервере получат их после перезахода."
+
 handshake:
   # The client did not say HELLO: no DUM-SDK mod installed
   missing: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Для игры на сервере нужен мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>.<newline><gray>Установи его и зайди снова."
@@ -7,3 +12,7 @@ handshake:
   outdated-client: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> устарел.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>. Обнови мод и зайди снова."
   # The client's protocol is newer than the server's
   outdated-server: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> новее, чем на сервере.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>. Сервер скоро обновится, напиши DUM."
+  # The client could not install the server's modules. <reason> comes from the client
+  install-failed: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Не удалось установить модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>.<newline><gray><reason>"
+  # The client did not finish downloading modules in time
+  install-timeout: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> загружались слишком долго.<newline><gray>Попробуй зайти ещё раз."

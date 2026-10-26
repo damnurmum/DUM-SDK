@@ -1,7 +1,11 @@
 package ru.dum.sdk.paper;
 
+import com.mojang.brigadier.Command;
+import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.connection.PlayerConnection;
+import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
+import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.Messenger;
@@ -27,6 +31,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     private final Map<String, BiConsumer<Player, byte[]>> moduleHandlers = new ConcurrentHashMap<>();
     private Messages messages;
     private ModuleManager<DumSdk> modules;
+    private final ModuleCatalog catalog = new ModuleCatalog();
 
     @Override
     public void onEnable() {
@@ -38,8 +43,29 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         messenger.registerIncomingPluginChannel(this, Protocol.CHANNEL, this);
         messenger.registerOutgoingPluginChannel(this, Protocol.CHANNEL);
 
+        catalog.load(getDataPath().resolve("modules"), getSLF4JLogger());
         modules = new ModuleManager<>(this, List.of(new HandshakeModule(this), new AccessoriesModule(this)));
         modules.enableAll();
+
+        getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> event.registrar().register(Commands.literal("dumsdk")
+                .requires(source -> source.getSender().hasPermission("dumsdk.admin"))
+                .executes(ctx -> {
+                    ctx.getSource().getSender().sendMessage(messages.get("core.info",
+                            Placeholder.unparsed("version", getPluginMeta().getVersion()),
+                            Placeholder.unparsed("protocol", String.valueOf(Protocol.VERSION)),
+                            Placeholder.unparsed("modules", String.join(", ", catalog.modules().stream().map(m -> m.id() + " " + m.version()).toList()))));
+                    return Command.SINGLE_SUCCESS;
+                })
+                .then(Commands.literal("reload").executes(ctx -> {
+                    // Players already on the server keep their modules until they rejoin
+                    reloadConfig();
+                    messages.load();
+                    int count = catalog.load(getDataPath().resolve("modules"), getSLF4JLogger());
+                    modules.reload();
+                    ctx.getSource().getSender().sendMessage(messages.get("core.reloaded", Placeholder.unparsed("count", String.valueOf(count))));
+                    return Command.SINGLE_SUCCESS;
+                }))
+                .build(), "Управление DUM-SDK", List.of()));
     }
 
     @Override
@@ -52,11 +78,15 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         return messages;
     }
 
+    ModuleCatalog catalog() {
+        return catalog;
+    }
+
     /** Configuration phase: only the handshake. Paper calls this for the play phase too, then the Player variant. */
     @Override
     public void onPluginMessageReceived(String channel, PlayerConnection connection, byte[] message) {
-        if (connection instanceof PlayerConfigurationConnection && modules.isEnabled("handshake")) {
-            modules.get(HandshakeModule.class).received(connection, message);
+        if (connection instanceof PlayerConfigurationConnection configuration && modules.isEnabled("handshake")) {
+            modules.get(HandshakeModule.class).received(configuration, message);
         }
     }
 

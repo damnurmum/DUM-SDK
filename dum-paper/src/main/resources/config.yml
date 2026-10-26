@@ -1,10 +1,12 @@
 # DUM-SDK server side. Every feature is a module with its own section; player texts are in messages.yml.
 
-# Handshake with the DUM-SDK client mod in the configuration phase, before the player enters the world.
-# Players without the mod or with an incompatible version are disconnected with an explanation.
+# Handshake with the DUM-SDK client mod in the configuration phase, before the player enters the world:
+# version check, then the client installs the signed modules from plugins/DUM-SDK/modules.
+# Players without the mod, with an incompatible version or failed modules are disconnected with an explanation.
 handshake:
   enabled: true
-  hello-timeout-seconds: 10   # how long to wait for the client's HELLO
+  hello-timeout-seconds: 10     # how long to wait for the client's HELLO
+  install-timeout-seconds: 120  # how long the client may take to download and check modules
 
 # Server side of the "info" client module: accessory slots for a compass and a clock next to the inventory.
 # The items are kept in the player's data and drop on death like the rest of the inventory.

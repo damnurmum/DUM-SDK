@@ -6,7 +6,7 @@ Work in progress. Done so far:
 
 - HELLO / WELCOME handshake on the `dum:sdk` channel during the configuration phase. Players without the mod are disconnected before they enter the world.
 - Modules talk to their server side over `dum:sdk` (`DumContext.sendToServer` / `onServerMessage`) and can draw on and take clicks from game screens.
-- Client modules: jars in `.minecraft/dum-sdk/modules` are loaded, each in its own class loader, while connected to a DUM-SDK server, and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode.
+- Client modules come from the server: signed jars in `plugins/DUM-SDK/modules` are sent to the client in the configuration phase, checked (SHA-256 and Ed25519 signature), cached in `.minecraft/dum-sdk/cache` and never taken back to an older version. They are loaded, each in its own class loader, while on the server and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode.
 
 ## Layout
 
@@ -32,7 +32,17 @@ A module is a plain jar with `dum-module.json` at its root:
 }
 ```
 
-The entrypoint implements `ru.dum.sdk.api.DumModule`. It may use any game or Fabric class directly; whatever it registers through `DumContext` is removed by the SDK when the module is turned off. `./gradlew :dum-example-module:install` puts the example into the dev client.
+The entrypoint implements `ru.dum.sdk.api.DumModule`. It may use any game or Fabric class directly; whatever it registers through `DumContext` is removed by the SDK when the module is turned off.
+
+## Signing
+
+Clients run only modules signed with the key whose public half is in `Signing.RELEASE_KEY` (`dum-network`). Development clients (`runClient`) also accept `Signing.DEV_KEY`.
+
+1. Once, on the machine that signs: `./gradlew generateSigningKey`. The private key goes to `~/.dum/signing.key`; keep a copy somewhere safe and never commit it. Put the printed public key into `Signing.RELEASE_KEY`.
+2. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules` (and `dumSigningKey=<file>` for a key elsewhere).
+3. `./gradlew :dum-example-module:deploy` signs the module and puts it there; `/dumsdk reload` offers it to players on their next join.
+
+`./gradlew :dum-fabric:runClient -Prelease` refuses dev-signed modules, like a player's client.
 
 ## Building
 

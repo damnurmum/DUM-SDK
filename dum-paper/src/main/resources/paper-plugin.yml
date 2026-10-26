@@ -12,3 +12,8 @@ dependencies:
       load: BEFORE
       required: true
       join-classpath: true
+
+permissions:
+  dumsdk.admin:
+    description: /dumsdk and /dumsdk reload
+    default: op

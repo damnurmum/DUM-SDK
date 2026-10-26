@@ -1,5 +1,7 @@
 package ru.dum.sdk.network;
 
+import java.util.List;
+
 /** A message on the {@value Protocol#CHANNEL} channel. Encoded and decoded by {@link Protocol}. */
 public sealed interface Message {
 
@@ -7,11 +9,36 @@ public sealed interface Message {
     record Hello(int protocol, String sdkVersion) implements Message {
     }
 
-    /** Server to client: the handshake is accepted and the player may join. */
+    /** Server to client: the handshake is accepted. A {@link Catalog} follows. */
     record Welcome(int protocol, String serverVersion) implements Message {
     }
 
-    /** Either way, after the handshake: data for one client module and its server side. The format is up to the module. */
+    /** Server to client: the modules to run on this server. The client fetches what it lacks, then says {@link Ready}. */
+    record Catalog(List<ModuleInfo> modules) implements Message {
+    }
+
+    /**
+     * One module of the catalog.
+     *
+     * @param sha256    of the jar; also the name the client caches it under
+     * @param signature Ed25519 over the jar bytes, see {@link Signing}
+     */
+    record ModuleInfo(String id, String version, byte[] sha256, int size, byte[] signature) {
+    }
+
+    /** Client to server: send me the jar with this hash. */
+    record Request(byte[] sha256) implements Message {
+    }
+
+    /** Server to client: a piece of a requested jar, starting at offset. */
+    record Chunk(byte[] sha256, int offset, byte[] data) implements Message {
+    }
+
+    /** Client to server: every module is in place (error is empty), or why it is not. Ends the configuration phase. */
+    record Ready(String error) implements Message {
+    }
+
+    /** Either way, in the play phase: data for one client module and its server side. The format is up to the module. */
     record Module(String module, byte[] data) implements Message {
     }
 }

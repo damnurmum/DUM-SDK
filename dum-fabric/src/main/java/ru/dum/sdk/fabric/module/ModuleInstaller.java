@@ -1,0 +1,195 @@
+package ru.dum.sdk.fabric.module;
+
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.Version;
+import net.fabricmc.loader.api.VersionParsingException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import ru.dum.sdk.network.Message;
+import ru.dum.sdk.network.Protocol;
+import ru.dum.sdk.network.Signing;
+
+import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.function.Consumer;
+
+/**
+ * Brings the server's module catalog into the local cache ({@code dum-sdk/cache/<sha256>.jar}): keeps what is
+ * already there, asks for the rest, checks the hash and the signature of every jar, then says READY.
+ * Runs on the network thread of the configuration phase. Texts in errors are shown to the player by the server.
+ */
+public final class ModuleInstaller {
+
+    private static final Logger LOG = LoggerFactory.getLogger("DUM-SDK");
+
+    private final Path cache;
+    /** The highest version of every module ever installed: the server may not take a module back to an older one. */
+    private final Path versionsFile;
+    private final Consumer<Message> send;
+    private final Consumer<List<Path>> installed;
+    /** Dev-signed modules run only in a development client; -Ddumsdk.release=true turns that off for testing. */
+    private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
+
+    private List<Message.ModuleInfo> catalog = List.of();
+    private final Map<String, Download> downloads = new HashMap<>();
+
+    private static final class Download {
+        final Message.ModuleInfo info;
+        final byte[] data;
+        int received;
+
+        Download(Message.ModuleInfo info) {
+            this.info = info;
+            this.data = new byte[info.size()];
+        }
+    }
+
+    /**
+     * @param send      sends a message to the server
+     * @param installed gets the jars of the whole catalog once they are all in place
+     */
+    public ModuleInstaller(Path root, Consumer<Message> send, Consumer<List<Path>> installed) {
+        this.cache = root.resolve("cache");
+        this.versionsFile = root.resolve("versions.properties");
+        this.send = send;
+        this.installed = installed;
+    }
+
+    public void catalog(List<Message.ModuleInfo> modules) {
+        catalog = modules;
+        downloads.clear();
+        Properties versions = loadVersions();
+        for (Message.ModuleInfo module : modules) {
+            String known = versions.getProperty(module.id());
+            if (known != null && older(module.version(), known)) {
+                fail("модуль " + module.id() + ": сервер предлагает старую версию " + module.version() + ", уже была " + known);
+                return;
+            }
+            if (module.size() <= 0 || module.size() > Protocol.MAX_MODULE_SIZE) {
+                fail("модуль " + module.id() + ": недопустимый размер " + module.size());
+                return;
+            }
+            if (!cached(module)) {
+                downloads.put(Signing.hex(module.sha256()), new Download(module));
+                send.accept(new Message.Request(module.sha256()));
+            }
+        }
+        LOG.info("{} modules from the server, {} to download", modules.size(), downloads.size());
+        if (downloads.isEmpty()) finish();
+    }
+
+    public void chunk(Message.Chunk chunk) {
+        Download download = downloads.get(Signing.hex(chunk.sha256()));
+        if (download == null) return;
+        String id = download.info.id();
+        int length = chunk.data().length;
+        if (chunk.offset() < 0 || chunk.offset() > download.data.length - length) {
+            fail("модуль " + id + ": повреждённые данные при загрузке");
+            return;
+        }
+        System.arraycopy(chunk.data(), 0, download.data, chunk.offset(), length);
+        // The server sends every piece once, in order
+        download.received += length;
+        if (download.received < download.data.length) return;
+
+        downloads.remove(Signing.hex(chunk.sha256()));
+        if (!Arrays.equals(Signing.sha256(download.data), download.info.sha256())) {
+            fail("модуль " + id + ": файл повреждён при загрузке");
+            return;
+        }
+        if (!Signing.verify(download.data, download.info.signature(), allowDevKey)) {
+            fail("модуль " + id + ": подпись не подходит, модуль не от DUM");
+            return;
+        }
+        try {
+            Files.createDirectories(cache);
+            Files.write(jar(download.info), download.data);
+        } catch (IOException e) {
+            LOG.error("Cannot save module {}", id, e);
+            fail("модуль " + id + ": не удалось сохранить на диск");
+            return;
+        }
+        LOG.info("Downloaded module {} {}", id, download.info.version());
+        if (downloads.isEmpty()) finish();
+    }
+
+    private void finish() {
+        List<Path> jars = new ArrayList<>();
+        Properties versions = loadVersions();
+        for (Message.ModuleInfo module : catalog) {
+            Path jar = jar(module);
+            try {
+                ModuleManifest manifest = ModuleManifest.read(jar);
+                if (!manifest.id().equals(module.id()) || !manifest.version().equals(module.version())) {
+                    fail("модуль " + module.id() + ": в файле другой модуль (" + manifest.id() + " " + manifest.version() + ")");
+                    return;
+                }
+            } catch (IOException e) {
+                fail("модуль " + module.id() + ": " + e.getMessage());
+                return;
+            }
+            jars.add(jar);
+            String known = versions.getProperty(module.id());
+            if (known == null || older(known, module.version())) versions.setProperty(module.id(), module.version());
+        }
+        try (Writer writer = Files.newBufferedWriter(versionsFile)) {
+            versions.store(writer, "Highest installed version of every DUM-SDK module");
+        } catch (IOException e) {
+            LOG.warn("Cannot save {}", versionsFile, e);
+        }
+        send.accept(new Message.Ready(""));
+        installed.accept(jars);
+    }
+
+    private void fail(String reason) {
+        LOG.warn("Cannot install modules: {}", reason);
+        downloads.clear();
+        send.accept(new Message.Ready(reason));
+    }
+
+    private Path jar(Message.ModuleInfo module) {
+        return cache.resolve(Signing.hex(module.sha256()) + ".jar");
+    }
+
+    /** In the cache with the right hash and a valid signature; anything else is downloaded again. */
+    private boolean cached(Message.ModuleInfo module) {
+        Path jar = jar(module);
+        if (!Files.isRegularFile(jar)) return false;
+        try {
+            byte[] data = Files.readAllBytes(jar);
+            return Arrays.equals(Signing.sha256(data), module.sha256()) && Signing.verify(data, module.signature(), allowDevKey);
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private Properties loadVersions() {
+        Properties versions = new Properties();
+        if (Files.exists(versionsFile)) {
+            try (Reader reader = Files.newBufferedReader(versionsFile)) {
+                versions.load(reader);
+            } catch (IOException e) {
+                LOG.warn("Cannot read {}", versionsFile, e);
+            }
+        }
+        return versions;
+    }
+
+    private static boolean older(String version, String than) {
+        try {
+            return Version.parse(version).compareTo(Version.parse(than)) < 0;
+        } catch (VersionParsingException e) {
+            // ModuleManifest.read rejects unparsable versions later
+            return false;
+        }
+    }
+}

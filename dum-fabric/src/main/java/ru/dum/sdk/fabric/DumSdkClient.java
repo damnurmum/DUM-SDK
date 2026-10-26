@@ -19,10 +19,12 @@ import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.dum.sdk.fabric.module.ModuleInstaller;
 import ru.dum.sdk.fabric.module.ModuleManager;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 
+import java.nio.file.Path;
 import java.util.List;
 
 /** Client entry point: the handshake with a DUM-SDK server, its modules and the connection status in the pause menu. */
@@ -36,7 +38,11 @@ public final class DumSdkClient implements ClientModInitializer {
     /** Version of the server that accepted our HELLO; null when not connected to a DUM-SDK server. */
     private static volatile @Nullable String serverVersion;
 
-    private static final ModuleManager MODULES = new ModuleManager();
+    private static final Path ROOT = FabricLoader.getInstance().getGameDir().resolve("dum-sdk");
+    private static final ModuleManager MODULES = new ModuleManager(ROOT);
+    private static final ModuleInstaller INSTALLER = new ModuleInstaller(ROOT,
+            message -> ClientConfigurationNetworking.send(new SdkPayload(Protocol.encode(message))),
+            jars -> Minecraft.getInstance().execute(() -> MODULES.start(jars)));
 
     @Override
     public void onInitializeClient() {
@@ -84,11 +90,15 @@ public final class DumSdkClient implements ClientModInitializer {
             case Message.Welcome welcome -> {
                 serverVersion = welcome.serverVersion();
                 LOG.info("Connected to DUM-SDK server {} (protocol {})", welcome.serverVersion(), welcome.protocol());
-                Minecraft.getInstance().execute(MODULES::start);
             }
+            // Configuration phase, network thread
+            case Message.Catalog catalog -> INSTALLER.catalog(catalog.modules());
+            case Message.Chunk chunk -> INSTALLER.chunk(chunk);
             // Play-phase payloads already arrive on the render thread
             case Message.Module module -> MODULES.deliver(module.module(), module.data());
-            case Message.Hello hello -> LOG.warn("Ignoring unexpected {} from the server", hello);
+            case Message.Hello hello -> LOG.warn("Ignoring unexpected {} from the server", hello.getClass().getSimpleName());
+            case Message.Request request -> LOG.warn("Ignoring unexpected {} from the server", request.getClass().getSimpleName());
+            case Message.Ready ready -> LOG.warn("Ignoring unexpected {} from the server", ready.getClass().getSimpleName());
         }
     }
 
