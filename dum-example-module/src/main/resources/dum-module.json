@@ -1,0 +1,6 @@
+{
+	"id": "info",
+	"version": "${version}",
+	"apiVersion": 1,
+	"entrypoint": "ru.dum.sdk.example.InfoModule"
+}
