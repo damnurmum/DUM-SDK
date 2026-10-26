@@ -1,0 +1,7 @@
+# DUM-SDK server side. Every feature is a module with its own section; player texts are in messages.yml.
+
+# Handshake with the DUM-SDK client mod in the configuration phase, before the player enters the world.
+# Players without the mod or with an incompatible version are disconnected with an explanation.
+handshake:
+  enabled: true
+  hello-timeout-seconds: 10   # how long to wait for the client's HELLO

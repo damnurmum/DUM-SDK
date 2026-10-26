@@ -1,0 +1,19 @@
+{
+	"schemaVersion": 1,
+	"id": "dum-sdk",
+	"version": "${version}",
+	"name": "DUM-SDK",
+	"description": "Client side of DUM-SDK: connects to the DUM server and runs the client modules it provides.",
+	"authors": ["DUM"],
+	"license": "MIT",
+	"environment": "client",
+	"entrypoints": {
+		"client": ["ru.dum.sdk.fabric.DumSdkClient"]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2",
+		"java": ">=25",
+		"fabric-api": ">=0.161.0"
+	}
+}

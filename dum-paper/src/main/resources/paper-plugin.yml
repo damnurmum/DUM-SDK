@@ -1,0 +1,14 @@
+name: DUM-SDK
+version: '${version}'
+main: ru.dum.sdk.paper.DumSdk
+api-version: '26.2'
+description: Server side of DUM-SDK, the client mod platform of DUM
+authors: [DUM]
+load: POSTWORLD
+
+dependencies:
+  server:
+    DUM-Core:
+      load: BEFORE
+      required: true
+      join-classpath: true

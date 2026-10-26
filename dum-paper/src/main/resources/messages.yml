@@ -1,0 +1,9 @@
+# DUM-SDK player texts (MiniMessage, same as DUM-Core).
+
+handshake:
+  # The client did not say HELLO: no DUM-SDK mod installed
+  missing: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Для игры на сервере нужен мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>.<newline><gray>Установи его и зайди снова."
+  # The client's protocol is older than the server's. <client> and <server> are DUM-SDK versions
+  outdated-client: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> устарел.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>. Обнови мод и зайди снова."
+  # The client's protocol is newer than the server's
+  outdated-server: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> новее, чем на сервере.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>. Сервер скоро обновится, напиши DUM."
