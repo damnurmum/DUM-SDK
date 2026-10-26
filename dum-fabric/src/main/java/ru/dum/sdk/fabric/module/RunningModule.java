@@ -2,7 +2,10 @@ package ru.dum.sdk.fabric.module;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.Entity;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,6 +22,8 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
@@ -33,10 +38,16 @@ final class RunningModule implements DumContext {
     final List<HudElement> huds = new CopyOnWriteArrayList<>();
     final List<ScreenLayer> screens = new CopyOnWriteArrayList<>();
     volatile @Nullable Consumer<byte[]> serverHandler;
+    final Map<KeyMapping, Runnable> keys = new ConcurrentHashMap<>();
+    final List<Entity> entities = new CopyOnWriteArrayList<>();
+    private final ModuleKeys keyStore;
+    /** Client-only entities get negative ids, so they never clash with the server's. */
+    private static int nextEntityId = -1_000_000;
     private final Logger logger;
     private final Path dataDir;
 
-    RunningModule(ModuleManifest manifest, Path jar, URLClassLoader loader, DumModule instance, Path dataDir) {
+    RunningModule(ModuleManifest manifest, Path jar, URLClassLoader loader, DumModule instance, Path dataDir, ModuleKeys keyStore) {
+        this.keyStore = keyStore;
         this.manifest = manifest;
         this.jar = jar;
         this.loader = loader;
@@ -90,10 +101,34 @@ final class RunningModule implements DumContext {
         ClientPlayNetworking.send(new SdkPayload(Protocol.encode(new Message.Module(id(), data))));
     }
 
+    @Override
+    public KeyMapping key(String name, int defaultKey, Runnable onPress) {
+        KeyMapping key = keyStore.add(id(), name, defaultKey);
+        keys.put(key, onPress);
+        return key;
+    }
+
+    @Override
+    public void addEntity(Entity entity) {
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null) throw new IllegalStateException("No level to add an entity to");
+        entity.setId(nextEntityId--);
+        level.addEntity(entity);
+        entities.removeIf(Entity::isRemoved);
+        entities.add(entity);
+    }
+
     void clear() {
         ticks.clear();
         huds.clear();
         screens.clear();
         serverHandler = null;
+        if (!keys.isEmpty()) keyStore.remove(keys.keySet());
+        keys.clear();
+        ClientLevel level = Minecraft.getInstance().level;
+        for (Entity entity : entities) {
+            if (!entity.isRemoved() && level != null && entity.level() == level) level.removeEntity(entity.getId(), Entity.RemovalReason.DISCARDED);
+        }
+        entities.clear();
     }
 }

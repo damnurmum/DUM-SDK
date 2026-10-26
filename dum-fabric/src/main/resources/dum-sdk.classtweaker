@@ -5,3 +5,5 @@ accessible	field	net/minecraft/client/gui/screens/inventory/AbstractContainerScr
 accessible	field	net/minecraft/client/gui/screens/inventory/AbstractContainerScreen	imageHeight	I
 accessible	field	net/minecraft/server/packs/repository/PackRepository	sources	Ljava/util/Set;
 mutable	field	net/minecraft/server/packs/repository/PackRepository	sources	Ljava/util/Set;
+accessible	field	net/minecraft/client/KeyMapping	ALL	Ljava/util/Map;
+mutable	field	net/minecraft/client/Options	keyMappings	[Lnet/minecraft/client/KeyMapping;

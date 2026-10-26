@@ -15,13 +15,18 @@ import net.minecraft.world.scores.Scoreboard;
 import ru.dum.sdk.api.DumContext;
 import ru.dum.sdk.api.DumModule;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Terraria-like info accessories. A compass or a clock in the accessory slots ({@link Accessories}) adds
  * a line on the right, just above the scoreboard sidebar: coordinates and facing, or the day, the time and
- * how long until night or morning. Same texts as the DUM-Mechanics actionbars.
+ * how long until night or morning. Same texts as the DUM-Mechanics actionbars. A key hides the lines;
+ * the compass also marks the place of the last death ({@link DeathMarker}).
  */
 public final class InfoModule implements DumModule {
 
@@ -41,19 +46,43 @@ public final class InfoModule implements DumModule {
     private static final TextColor SEPARATOR = TextColor.fromRgb(0x555555);
 
     private Accessories accessories;
+    private DeathMarker deathMarker;
+    /** Lines hidden by the player with the toggle key; remembered as a file in the module's folder. */
+    private boolean hidden;
+    private Path hiddenFlag;
 
     @Override
     public void onEnable(DumContext context) {
         accessories = new Accessories(context);
+        deathMarker = new DeathMarker(context);
+        hiddenFlag = context.dataDir().resolve("lines-hidden");
+        hidden = Files.exists(hiddenFlag);
         context.screen(accessories);
         context.onServerMessage(accessories::receive);
         context.hud(this::draw);
+        context.onTick(() -> deathMarker.tick(accessories.equipped(Items.COMPASS)));
+        context.key("toggle_lines", -1, this::toggle);
+    }
+
+    @Override
+    public void onDisable() {
+        deathMarker.remove();
+    }
+
+    private void toggle() {
+        hidden = !hidden;
+        try {
+            if (hidden) Files.writeString(hiddenFlag, "");
+            else Files.deleteIfExists(hiddenFlag);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private void draw(GuiGraphicsExtractor graphics, DeltaTracker delta) {
         Minecraft minecraft = Minecraft.getInstance();
         Player player = minecraft.player;
-        if (player == null || minecraft.level == null) return;
+        if (hidden || player == null || minecraft.level == null) return;
 
         List<Component> lines = new ArrayList<>(2);
         if (accessories.equipped(Items.COMPASS)) lines.add(compass(player));

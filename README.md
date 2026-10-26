@@ -6,6 +6,7 @@ Work in progress. Done so far:
 
 - HELLO / WELCOME handshake on the `dum:sdk` channel during the configuration phase. Players without the mod are disconnected before they enter the world.
 - Modules may carry `assets/` (textures, models, sounds, lang): while a module runs, its jar is a client resource pack on top of the others, loaded before the player enters the world.
+- Modules can add keys (Controls, category DUM; bindings kept between sessions) and client-only entities in the world, such as display entities with models from their assets.
 - Modules talk to their server side over `dum:sdk` (`DumContext.sendToServer` / `onServerMessage`) and can draw on and take clicks from game screens.
 - Client modules come from the server: signed jars in `plugins/DUM-SDK/modules` are sent to the client in the configuration phase, checked (SHA-256 and Ed25519 signature), cached in `.minecraft/dum-sdk/cache` and never taken back to an older version. They are loaded, each in its own class loader, while on the server and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode.
 
@@ -16,7 +17,7 @@ Work in progress. Done so far:
 | `dum-network` | Wire format of the `dum:sdk` channel, shared by both sides |
 | `dum-fabric` | The client mod (Minecraft 26.2, Fabric) |
 | `dum-paper` | The server plugin (Paper 26.2), built on DUM-Core |
-| `dum-example-module` | `info`, a client module: accessory slots for a compass and a clock, and their lines on the HUD (server side: `accessories` in `dum-paper`) |
+| `dum-example-module` | `info`, a client module: accessory slots for a compass and a clock, their lines on the HUD, a key to hide them, a flag over the last death point (server side: `accessories` in `dum-paper`) |
 
 ## Writing a module
 

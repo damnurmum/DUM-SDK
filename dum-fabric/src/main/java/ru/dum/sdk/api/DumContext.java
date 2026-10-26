@@ -1,6 +1,8 @@
 package ru.dum.sdk.api;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.world.entity.Entity;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -33,4 +35,18 @@ public interface DumContext {
 
     /** Sends data to the server side of this module. Dropped when not in a world. */
     void sendToServer(byte[] data);
+
+    /**
+     * A key in Controls, category DUM. Its title is the lang key {@code key.<module id>.<name>} from the module's
+     * assets. Pressing it in game calls onPress. The player's binding is kept between sessions by the SDK.
+     *
+     * @param defaultKey a GLFW key code, or -1 for none
+     */
+    KeyMapping key(String name, int defaultKey, Runnable onPress);
+
+    /**
+     * Adds a client-only entity to the current level, seen by this player alone: display entities and the like.
+     * It goes away with the level (dimension change, respawn), so check {@link Entity#isRemoved()} and add a new one.
+     */
+    void addEntity(Entity entity);
 }

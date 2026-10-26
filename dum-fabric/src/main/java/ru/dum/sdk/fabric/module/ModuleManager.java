@@ -51,6 +51,7 @@ public final class ModuleManager {
     private final Path activeMarker;
     private final List<RunningModule> running = new CopyOnWriteArrayList<>();
     private final ModulePacks packs = new ModulePacks();
+    private final ModuleKeys keys;
     private boolean safeMode;
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
@@ -58,6 +59,7 @@ public final class ModuleManager {
     public ModuleManager(Path root) {
         this.root = root;
         this.activeMarker = root.resolve("modules-active");
+        this.keys = new ModuleKeys(root);
     }
 
     public void init() {
@@ -71,7 +73,12 @@ public final class ModuleManager {
 
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("dum-sdk", "modules"),
                 (graphics, delta) -> dispatch(m -> m.huds, hud -> hud.extractRenderState(graphics, delta)));
-        ClientTickEvents.END_CLIENT_TICK.register(client -> dispatch(m -> m.ticks, Runnable::run));
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            dispatch(m -> List.copyOf(m.keys.entrySet()), key -> {
+                while (key.getKey().consumeClick()) key.getValue().run();
+            });
+            dispatch(m -> m.ticks, Runnable::run);
+        });
         // Screen events belong to one screen and are recreated on every init
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             ScreenEvents.afterBackground(screen).register((s, graphics, mouseX, mouseY, delta) ->
@@ -235,7 +242,7 @@ public final class ModuleManager {
         RunningModule module;
         try {
             DumModule instance = loader.loadClass(manifest.entrypoint()).asSubclass(DumModule.class).getConstructor().newInstance();
-            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()));
+            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys);
         } catch (ReflectiveOperationException | ClassCastException | LinkageError e) {
             LOG.error("Cannot create module {} from {}", manifest.id(), manifest.entrypoint(), e);
             close(loader, manifest.id());
