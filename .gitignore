@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/
+run/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+bin/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Signing keys never belong in this repo
+*.key
+*.pem
+*.p8
+signing/
