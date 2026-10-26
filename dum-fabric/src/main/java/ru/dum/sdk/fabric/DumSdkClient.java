@@ -77,7 +77,7 @@ public final class DumSdkClient implements ClientModInitializer {
         Component status = serverVersion != null
                 ? Component.literal("подключено").withStyle(ChatFormatting.GREEN)
                 : Component.literal("не подключено").withStyle(ChatFormatting.GRAY);
-        Component line = Component.literal("DUM-SDK " + VERSION + ": ").withStyle(ChatFormatting.GOLD).append(status);
+        Component line = Component.literal("DUM-SDK " + VERSION + ": ").withStyle(ChatFormatting.GRAY).append(status);
         graphics.text(Minecraft.getInstance().font, line, 4, screen.height - 12, 0xFFFFFFFF, true);
     }
 }
