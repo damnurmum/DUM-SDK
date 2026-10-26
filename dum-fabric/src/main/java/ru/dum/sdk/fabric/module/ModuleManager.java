@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -49,6 +50,7 @@ public final class ModuleManager {
     /** Exists while modules run. Left behind after a crash, it turns the next launch into safe mode. */
     private final Path activeMarker;
     private final List<RunningModule> running = new CopyOnWriteArrayList<>();
+    private final ModulePacks packs = new ModulePacks();
     private boolean safeMode;
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
@@ -90,11 +92,14 @@ public final class ModuleManager {
         return safeMode;
     }
 
-    /** Loads and turns on every module of these jars that can run. */
-    public void start(List<Path> jars) {
-        if (safeMode || !running.isEmpty()) return;
+    /**
+     * Loads and turns on every module of these jars that can run, then their resources.
+     * Completes when the resources are loaded.
+     */
+    public CompletableFuture<Void> start(List<Path> jars) {
+        if (safeMode || !running.isEmpty()) return CompletableFuture.completedFuture(null);
         List<Candidate> order = resolve(scan(jars));
-        if (order.isEmpty()) return;
+        if (order.isEmpty()) return CompletableFuture.completedFuture(null);
         try {
             Files.writeString(activeMarker, String.join("\n", order.stream().map(c -> c.manifest.id()).toList()));
         } catch (IOException e) {
@@ -107,6 +112,11 @@ public final class ModuleManager {
                 LOG.warn("Module {} is not started: a module it depends on failed", candidate.manifest.id());
             }
         }
+        Map<String, Path> assets = new LinkedHashMap<>();
+        for (RunningModule module : running) {
+            if (ModulePacks.hasAssets(module.jar)) assets.put(module.id(), module.jar);
+        }
+        return packs.set(assets);
     }
 
     /** Data from the server side of a module; dropped if that module is not running. */
@@ -125,9 +135,14 @@ public final class ModuleManager {
         }
     }
 
-    /** Turns off and unloads every running module, dependents first. */
-    public void stop() {
+    /**
+     * Turns off and unloads every running module, dependents first.
+     *
+     * @param reloadResources drop the modules' resources too; not while the game is closing
+     */
+    public void stop(boolean reloadResources) {
         for (RunningModule module : running.reversed()) stop(module);
+        if (reloadResources) packs.set(Map.of());
         try {
             Files.deleteIfExists(activeMarker);
         } catch (IOException e) {
@@ -220,7 +235,7 @@ public final class ModuleManager {
         RunningModule module;
         try {
             DumModule instance = loader.loadClass(manifest.entrypoint()).asSubclass(DumModule.class).getConstructor().newInstance();
-            module = new RunningModule(manifest, loader, instance, root.resolve("data").resolve(manifest.id()));
+            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()));
         } catch (ReflectiveOperationException | ClassCastException | LinkageError e) {
             LOG.error("Cannot create module {} from {}", manifest.id(), manifest.entrypoint(), e);
             close(loader, manifest.id());

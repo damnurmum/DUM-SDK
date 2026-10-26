@@ -26,6 +26,7 @@ import ru.dum.sdk.network.Protocol;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /** Client entry point: the handshake with a DUM-SDK server, its modules and the connection status in the pause menu. */
 public final class DumSdkClient implements ClientModInitializer {
@@ -42,7 +43,8 @@ public final class DumSdkClient implements ClientModInitializer {
     private static final ModuleManager MODULES = new ModuleManager(ROOT);
     private static final ModuleInstaller INSTALLER = new ModuleInstaller(ROOT,
             message -> ClientConfigurationNetworking.send(new SdkPayload(Protocol.encode(message))),
-            jars -> Minecraft.getInstance().execute(() -> MODULES.start(jars)));
+            jars -> CompletableFuture.supplyAsync(() -> MODULES.start(jars), Minecraft.getInstance())
+                    .thenCompose(started -> started));
 
     @Override
     public void onInitializeClient() {
@@ -63,19 +65,21 @@ public final class DumSdkClient implements ClientModInitializer {
         });
         ClientConfigurationConnectionEvents.DISCONNECT.register((listener, client) -> disconnected(client));
         ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> disconnected(client));
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MODULES.stop());
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MODULES.stop(false));
 
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             if (screen instanceof PauseScreen pause && pause.showsPauseMenu()) {
                 ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> drawStatus(s, graphics));
             }
+            // Whatever screen the game shows while joining
+            ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> drawDownload(s, graphics));
         });
         LOG.info("DUM-SDK {} (protocol {})", VERSION, Protocol.VERSION);
     }
 
     private static void disconnected(Minecraft client) {
         serverVersion = null;
-        client.execute(MODULES::stop);
+        client.execute(() -> MODULES.stop(true));
     }
 
     private static void receive(SdkPayload payload) {
@@ -100,6 +104,21 @@ public final class DumSdkClient implements ClientModInitializer {
             case Message.Request request -> LOG.warn("Ignoring unexpected {} from the server", request.getClass().getSimpleName());
             case Message.Ready ready -> LOG.warn("Ignoring unexpected {} from the server", ready.getClass().getSimpleName());
         }
+    }
+
+    /** A bar under the middle of the screen while modules download. */
+    private static void drawDownload(Screen screen, GuiGraphicsExtractor graphics) {
+        float progress = INSTALLER.progress();
+        if (progress < 0) return;
+        int width = 182;
+        int x = (screen.width - width) / 2;
+        int y = screen.height / 2 + 40;
+        Component text = Component.literal("Загрузка модулей DUM-SDK: ").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(INSTALLER.progressText()).withStyle(ChatFormatting.WHITE));
+        graphics.centeredText(Minecraft.getInstance().font, text, screen.width / 2, y - 12, 0xFFFFFFFF);
+        graphics.fill(x - 1, y - 1, x + width + 1, y + 6, 0xFF000000);
+        graphics.fill(x, y, x + width, y + 5, 0xFF3A3A3A);
+        graphics.fill(x, y, x + Math.round(width * progress), y + 5, 0xFFFFB347);
     }
 
     private static void drawStatus(Screen screen, GuiGraphicsExtractor graphics) {

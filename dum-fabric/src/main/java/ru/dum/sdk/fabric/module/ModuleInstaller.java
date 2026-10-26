@@ -20,7 +20,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * Brings the server's module catalog into the local cache ({@code dum-sdk/cache/<sha256>.jar}): keeps what is
@@ -35,7 +38,7 @@ public final class ModuleInstaller {
     /** The highest version of every module ever installed: the server may not take a module back to an older one. */
     private final Path versionsFile;
     private final Consumer<Message> send;
-    private final Consumer<List<Path>> installed;
+    private final Function<List<Path>, CompletableFuture<?>> installed;
     /** Dev-signed modules run only in a development client; -Ddumsdk.release=true turns that off for testing. */
     private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
 
@@ -53,11 +56,15 @@ public final class ModuleInstaller {
         }
     }
 
+    /** Bytes of the current downloads; read by the progress bar on the render thread. */
+    private volatile long total;
+    private volatile long received;
+
     /**
      * @param send      sends a message to the server
-     * @param installed gets the jars of the whole catalog once they are all in place
+     * @param installed gets the jars of the whole catalog once they are all in place; READY waits for it
      */
-    public ModuleInstaller(Path root, Consumer<Message> send, Consumer<List<Path>> installed) {
+    public ModuleInstaller(Path root, Consumer<Message> send, Function<List<Path>, CompletableFuture<?>> installed) {
         this.cache = root.resolve("cache");
         this.versionsFile = root.resolve("versions.properties");
         this.send = send;
@@ -67,6 +74,8 @@ public final class ModuleInstaller {
     public void catalog(List<Message.ModuleInfo> modules) {
         catalog = modules;
         downloads.clear();
+        total = 0;
+        received = 0;
         Properties versions = loadVersions();
         for (Message.ModuleInfo module : modules) {
             String known = versions.getProperty(module.id());
@@ -80,6 +89,7 @@ public final class ModuleInstaller {
             }
             if (!cached(module)) {
                 downloads.put(Signing.hex(module.sha256()), new Download(module));
+                total += module.size();
                 send.accept(new Message.Request(module.sha256()));
             }
         }
@@ -99,6 +109,7 @@ public final class ModuleInstaller {
         System.arraycopy(chunk.data(), 0, download.data, chunk.offset(), length);
         // The server sends every piece once, in order
         download.received += length;
+        received += length;
         if (download.received < download.data.length) return;
 
         downloads.remove(Signing.hex(chunk.sha256()));
@@ -146,13 +157,45 @@ public final class ModuleInstaller {
         } catch (IOException e) {
             LOG.warn("Cannot save {}", versionsFile, e);
         }
-        send.accept(new Message.Ready(""));
-        installed.accept(jars);
+        removeUnused(jars);
+        total = 0;
+        installed.apply(jars).whenComplete((result, error) -> {
+            if (error != null) LOG.error("Cannot start modules", error);
+            send.accept(new Message.Ready(error == null ? "" : "не удалось загрузить ресурсы модулей"));
+        });
+    }
+
+    /** Cached jars of older versions and of modules the server no longer has. A file still in use stays until next time. */
+    private void removeUnused(List<Path> keep) {
+        try (Stream<Path> files = Files.list(cache)) {
+            for (Path file : files.filter(f -> !keep.contains(f)).toList()) {
+                try {
+                    Files.delete(file);
+                    LOG.info("Removed unused {}", file.getFileName());
+                } catch (IOException e) {
+                    LOG.debug("Cannot remove {} yet", file.getFileName(), e);
+                }
+            }
+        } catch (IOException e) {
+            // No cache folder yet: nothing to clean
+        }
+    }
+
+    /** Fraction of the current downloads that arrived, or -1 when nothing is downloading. */
+    public float progress() {
+        long all = total;
+        return all > 0 ? (float) received / all : -1;
+    }
+
+    /** Megabytes arrived and expected, for the progress bar. */
+    public String progressText() {
+        return String.format("%.1f из %.1f МБ", received / 1048576.0, total / 1048576.0);
     }
 
     private void fail(String reason) {
         LOG.warn("Cannot install modules: {}", reason);
         downloads.clear();
+        total = 0;
         send.accept(new Message.Ready(reason));
     }
 

@@ -5,6 +5,7 @@ A Fabric client mod and a Paper server plugin that let a server deliver signed c
 Work in progress. Done so far:
 
 - HELLO / WELCOME handshake on the `dum:sdk` channel during the configuration phase. Players without the mod are disconnected before they enter the world.
+- Modules may carry `assets/` (textures, models, sounds, lang): while a module runs, its jar is a client resource pack on top of the others, loaded before the player enters the world.
 - Modules talk to their server side over `dum:sdk` (`DumContext.sendToServer` / `onServerMessage`) and can draw on and take clicks from game screens.
 - Client modules come from the server: signed jars in `plugins/DUM-SDK/modules` are sent to the client in the configuration phase, checked (SHA-256 and Ed25519 signature), cached in `.minecraft/dum-sdk/cache` and never taken back to an older version. They are loaded, each in its own class loader, while on the server and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode.
 

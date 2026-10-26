@@ -6,6 +6,7 @@ import net.minecraft.client.gui.navigation.ScreenRectangle;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
@@ -29,8 +30,11 @@ import java.io.UncheckedIOException;
  */
 final class Accessories implements ScreenLayer {
 
-    /** What each slot takes; also its faded hint while empty. */
+    /** What each slot takes. */
     static final Item[] SLOT_ITEMS = {Items.COMPASS, Items.CLOCK};
+    /** Outline shown in an empty slot, like the armor slots; from this module's own assets. */
+    private static final Identifier[] HINT_SPRITES = {
+            Identifier.fromNamespaceAndPath("info", "slot/compass"), Identifier.fromNamespaceAndPath("info", "slot/clock")};
     private static final Component[] HINTS = {Component.literal("Слот компаса"), Component.literal("Слот часов")};
 
     private static final int SLOT = 18;
@@ -90,10 +94,7 @@ final class Accessories implements ScreenLayer {
             drawSlot(graphics, x, y);
             ItemStack stack = slots[i];
             if (stack.isEmpty()) {
-                graphics.item(new ItemStack(SLOT_ITEMS[i]), x + 1, y + 1);
-                // Fade the hint into the slot, like an empty armor slot
-                graphics.nextStratum();
-                graphics.fill(x + 1, y + 1, x + 17, y + 17, 0xA08B8B8B);
+                graphics.blitSprite(RenderPipelines.GUI_TEXTURED, HINT_SPRITES[i], x + 1, y + 1, 16, 16);
             } else {
                 graphics.item(stack, x + 1, y + 1);
             }

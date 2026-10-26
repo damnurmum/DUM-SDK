@@ -26,6 +26,7 @@ import java.util.function.Consumer;
 final class RunningModule implements DumContext {
 
     final ModuleManifest manifest;
+    final Path jar;
     final URLClassLoader loader;
     final DumModule instance;
     final List<Runnable> ticks = new CopyOnWriteArrayList<>();
@@ -35,8 +36,9 @@ final class RunningModule implements DumContext {
     private final Logger logger;
     private final Path dataDir;
 
-    RunningModule(ModuleManifest manifest, URLClassLoader loader, DumModule instance, Path dataDir) {
+    RunningModule(ModuleManifest manifest, Path jar, URLClassLoader loader, DumModule instance, Path dataDir) {
         this.manifest = manifest;
+        this.jar = jar;
         this.loader = loader;
         this.instance = instance;
         this.dataDir = dataDir;
