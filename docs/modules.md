@@ -11,6 +11,17 @@ DUM-SDK runs code that the server hands out. There are two kinds:
 
 Both are signed with the author's key and delivered by the server; clients refuse anything else.
 
+## Fair play: the rules every module follows
+
+The server cannot know what code really runs on a player's computer: a changed client can say anything about itself, its version, its hashes, its modules. Signatures, the protocol check, required modules and the safe mode refusal keep out accidents and easy tricks, not a determined cheater. What keeps the game fair is how modules are built:
+
+1. **The server decides the rules.** The client side shows things and takes input; anything that matters for the game (what may be done, rewards, costs, cooldowns, limits, where items go, what is stored) is decided and stored on the server side, in the plugin. The client sends what the player did ("clicked slot 1"), never the result ("now I have the compass in slot 1"). The `info` accessories are the example: the server checks the item on the cursor, moves it and keeps it in the player's data; the client only draws what the server sent.
+2. **The server checks every message.** Treat each message from a client as possibly forged: check its size and values, that the player may do this now (game mode, open screen, distance, cooldown), and do nothing on anything unexpected.
+3. **Do not send the client more than the player may know.** Whatever reaches the client can be read by a changed one, whether the module shows it or not. Send only what the player would see or know in the game anyway; for things like hidden ores, other players' positions or a chest's contents, the server works them out and sends only the result the player is allowed (a glow on the blocks a perk reveals, not the ore map around).
+4. **Data the vanilla client has anyway is fine to use** (own position, world time, the last death point, the blocks and entities the game sent): a module that shows it gives nothing new.
+
+A module that would break these rules to work is a sign that its logic belongs on the server.
+
 ## A module
 
 ### Project
@@ -108,7 +119,9 @@ sdk.onModuleMessage(plugin, "info", (player, data) -> { /* main thread */ });
 sdk.sendToModule(player, "info", bytes); // from PlayerJoinEvent on
 ```
 
-The module's data format is its own business; keep the server authoritative (the `info` accessories send only "slot N was clicked", and the server decides what happens).
+The module's data format is its own business; follow the [fair play rules](#fair-play-the-rules-every-module-follows): the server decides and checks, and sends only what the player may know (the `info` accessories send only "slot N was clicked", and the server decides what happens).
+
+The server itself should not leak either: Paper's anti-xray hides ores the player cannot see in the chunks it sends, with a per-world list for the Nether (ancient debris, nether gold, quartz).
 
 ## Publishing
 
