@@ -66,6 +66,10 @@ dumCorePath=/path/to/DUM-Core
 
 `./gradlew :dum-fabric:runClient -Pjoin=localhost` starts a dev client and connects to a local server.
 
+## Manual checks
+
+What still has to be verified on the real setup (Windows PC, VDS, the players' clients) is listed in [CHECKLIST.md](CHECKLIST.md).
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
