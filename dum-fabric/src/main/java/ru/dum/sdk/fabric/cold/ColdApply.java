@@ -30,11 +30,30 @@ public final class ColdApply {
     public static void start(Path plan) throws IOException {
         String java = ProcessHandle.current().info().command()
                 .orElse(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        String classpath;
+        Path source;
         try {
-            classpath = Path.of(ColdApply.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+            source = Path.of(ColdApply.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         } catch (URISyntaxException | NullPointerException e) {
             throw new IOException("Cannot find the DUM-SDK classes for the helper", e);
+        }
+        String classpath = source.toString();
+        if (Files.isRegularFile(source)) {
+            // Windows keeps a jar locked while any JVM runs from it, and a self-update deletes the old DUM-SDK jar:
+            // the helper runs from its own copy. Copies of earlier helpers go once nothing holds them.
+            Path dir = plan.resolveSibling("helper");
+            Files.createDirectories(dir);
+            try (var old = Files.list(dir)) {
+                old.forEach(file -> {
+                    try {
+                        Files.deleteIfExists(file);
+                    } catch (IOException e) {
+                        // Still running: next time
+                    }
+                });
+            }
+            Path copy = dir.resolve("cold-apply-" + System.nanoTime() + ".jar");
+            Files.copy(source, copy);
+            classpath = copy.toString();
         }
         new ProcessBuilder(java, "-cp", classpath, ColdApply.class.getName(),
                 String.valueOf(ProcessHandle.current().pid()), plan.toAbsolutePath().toString())
