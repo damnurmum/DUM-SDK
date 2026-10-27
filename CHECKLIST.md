@@ -28,8 +28,8 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 
 Checked on the Mac only in a dev client against a fake release (download, signature, toast, helper copies the jar).
 
-- [ ] In MultiMC: with release N installed, publish N+1; start the game, see the toast, close the game, and check that `mods` now has `DUM-SDK-<N+1>.jar` and no longer the old jar.
-- [ ] The next start runs N+1 (`/sdk` shows it) and the server lets it in.
+- [ ] In MultiMC: with release N installed, publish N+1; start the game, see the toast, close the game, and check that `mods` now has `DUM-SDK-<N+1>.jar` and no longer the old jar. 0.12.0 to 0.12.1 (2026-10-27): the new jar arrived, but the old one stayed, because the helper ran from it and Windows locks a jar a JVM runs from. Fixed in 0.12.2 (the helper runs from a copy, checked with a harness). Recheck from 0.12.2 on, the first update whose old version already has the fix.
+- [x] The next start runs N+1 (`/sdk` shows it) and the server lets it in. 0.12.1, 2026-10-27; leaving the server no longer hangs the loading screen.
 - [ ] A client whose protocol is too old: the server's message says the mod updates itself after a restart, and it does.
 
 ## The players' real client
@@ -52,10 +52,10 @@ Checked on the Mac only in a dev client against a fake release (download, signat
 
 ## Gameplay of the `info` demo
 
-- [ ] Accessory slots: a compass and a clock go in, other items are refused, an item can be swapped with the one on the cursor.
-- [ ] Death without keepInventory: the compass and the clock from the slots drop with the rest; with keepInventory they stay.
-- [ ] The slots keep their items across rejoins and server restarts.
-- [ ] The death flag shows over the last death point in the right dimension only, and moves after a new death.
+- [x] Accessory slots: a compass and a clock go in, other items are refused. Checked by the author 2026-10-27; swapping with the cursor item not reported.
+- [ ] Death without keepInventory: the compass and the clock from the slots drop with the rest (checked 2026-10-27); with keepInventory they stay (not checked yet).
+- [ ] The slots keep their items across rejoins (checked 2026-10-27) and server restarts (not checked yet).
+- [ ] The death flag shows over the last death point (checked 2026-10-27); only in the right dimension and moving after a new death, not checked yet.
 
 ## Open questions
 
