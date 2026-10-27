@@ -18,3 +18,7 @@ handshake:
   install-timeout: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> загружались слишком долго.<newline><gray>Попробуй зайти ещё раз."
   # Fabric mods from the server are added, updated or removed when the game restarts (cold load). <mods>: their ids
   restart: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Изменились моды <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>: <mods>.<newline><gray>Перезапусти игру, чтобы изменения вступили в силу."
+
+limits:
+  # A client sent the server side of a module far more messages than any normal play does. <module>: its id
+  flood: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модуль <gradient:#ffb347:#ffcc33><module></gradient> прислал серверу слишком много сообщений.<newline><gray>Зайди снова. Если повторится, напиши DUM."

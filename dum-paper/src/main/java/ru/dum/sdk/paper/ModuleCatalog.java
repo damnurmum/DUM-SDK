@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -86,6 +87,11 @@ final class ModuleCatalog {
         List<Message.ModuleInfo> modules = new ArrayList<>();
         for (Entry entry : bySha.values()) modules.add(entry.info);
         return modules;
+    }
+
+    /** The modules one player gets: without {@code op}, none of {@code opsOnly}. */
+    List<Message.ModuleInfo> modulesFor(boolean op, Collection<String> opsOnly) {
+        return modules().stream().filter(module -> op || !opsOnly.contains(module.id())).toList();
     }
 
     /** The jar with this hash, or null. */

@@ -15,6 +15,8 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 - [ ] A user folder with Cyrillic letters or spaces in the path: modules, cache and cold load still work.
 - [x] Safe mode: kill the game while modules run, start it again, the pause menu shows the safe mode status. Checked by the author 2026-10-27 (MultiMC Kill).
 - [ ] Safe mode and joining (0.12.6): in safe mode the server refuses the join with "Перезапусти игру"; after one more restart the join works and the modules run.
+- [x] Server side limits (0.14.0): module messages only from players given the module, rate limit per player and module (unit tests), `ops-only` modules not offered to other players (game test with sdktest ops-only: the client got only info). Checked 2026-10-27.
+- [ ] Rate limit with a real flood: a changed client spamming a module gets disconnected with "прислал серверу слишком много сообщений".
 - [x] Required modules (0.13.0): a required module failing in game disconnects the player with the reason. Checked 2026-10-27 with the game test and sdktest built as required; an optional one (sdktest as shipped) only turns itself off.
 
 ## Release signing key

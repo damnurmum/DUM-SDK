@@ -8,6 +8,18 @@ handshake:
   hello-timeout-seconds: 10     # how long to wait for the client's HELLO
   install-timeout-seconds: 120  # how long the client may take to download and check modules
 
+# Messages from client modules to their server sides: a changed client could send any number of them.
+# Per player and module: per-second on average, up to burst at once; the rest is dropped, and a player whose
+# messages keep being dropped this many times in a row is disconnected.
+module-messages:
+  per-second: 20
+  burst: 40
+  disconnect-after: 100
+
+# Client modules only operators get (module ids). Everyone else never receives the module, cannot download it,
+# and its server side neither hears from nor sends to them.
+ops-only: []
+
 # Server side of the "info" client module: accessory slots for a compass and a clock next to the inventory.
 # The items are kept in the player's data and drop on death like the rest of the inventory.
 accessories:

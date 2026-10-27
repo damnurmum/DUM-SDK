@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.DisconnectedScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
@@ -44,6 +45,13 @@ public final class SdkGameTest implements FabricClientGameTest {
             check(DumSdkClient.modules().failures().isEmpty(), "no module failed, got " + DumSdkClient.modules().failures());
         });
         context.takeScreenshot("dum-sdk-joined");
+
+        // The test player may come back dead (mobs on the test server at night): no screen may take the key press
+        context.runOnClient(client -> {
+            if (client.player.isDeadOrDying()) client.player.respawn();
+        });
+        context.waitFor(client -> client.player != null && !client.player.isDeadOrDying() && !(client.gui.screen() instanceof DeathScreen), MINUTE);
+        context.setScreen(() -> null);
 
         // Break sdktest with its key: only it goes down, with a recorded failure
         KeyMapping fail = context.computeOnClient(client -> KeyMapping.get("key.sdktest.fail"));

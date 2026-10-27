@@ -22,12 +22,19 @@ public interface DumSdkApi {
     /**
      * Data that the client module with this id sends, on the main thread. One handler per module id;
      * it is removed when the owner plugin is disabled.
+     * <p>
+     * Treat every message as possibly forged and decide the result here (see the fair play rules in docs/modules.md).
+     * DUM-SDK already drops messages from players who were not given the module, limits how many a player may send
+     * (module-messages in its config) and logs what the handler throws instead of letting it out.
      */
     void onModuleMessage(Plugin owner, String module, BiConsumer<Player, byte[]> handler);
 
     /**
      * Sends data to the client module with this id on the player's client. Works from PlayerJoinEvent on;
-     * dropped if the module is not running there.
+     * dropped if the player was not given the module (ops-only) or it is not running there.
      */
     void sendToModule(Player player, String module, byte[] data);
+
+    /** Whether the player joined with this client module (it is in their catalog and was installed). */
+    boolean hasModule(Player player, String module);
 }

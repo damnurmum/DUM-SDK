@@ -6,6 +6,13 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:${property("paper_version")}")
     compileOnly("ru.dum:DUM-Core")
     implementation(project(":dum-network"))
+    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks {

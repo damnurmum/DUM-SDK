@@ -10,15 +10,20 @@ import org.jspecify.annotations.Nullable;
 import ru.dum.core.api.module.Module;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
+import ru.dum.sdk.network.Signing;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.stream.Collectors;
 
 /**
  * The configuration phase, before the player enters the world: HELLO, WELCOME, the module catalog,
@@ -28,7 +33,11 @@ import java.util.concurrent.TimeoutException;
 final class HandshakeModule extends Module<DumSdk> {
 
     /** What one connecting client has said so far; the client may speak before the configure event waits. */
-    private record Pending(CompletableFuture<byte[]> hello, CompletableFuture<Message> ready) {
+    private static final class Pending {
+        final CompletableFuture<byte[]> hello = new CompletableFuture<>();
+        final CompletableFuture<Message> ready = new CompletableFuture<>();
+        /** Hashes of the jars this player was offered: only these may be downloaded. */
+        volatile Set<String> offered = Set.of();
     }
 
     // ponytail: an entry stays if a client says HELLO but disconnects before the configure event; tiny, cleared on restart
@@ -61,7 +70,14 @@ final class HandshakeModule extends Module<DumSdk> {
         }
         switch (message) {
             case Message.Hello hello -> state.hello.complete(data);
-            case Message.Request request -> send(connection, request.sha256());
+            case Message.Request request -> {
+                // Only what this player was offered: an ops-only module stays on the server for everyone else
+                if (state.offered.contains(Signing.hex(request.sha256()))) {
+                    send(connection, request.sha256());
+                } else {
+                    plugin.getSLF4JLogger().warn("{} asked for a module it was not offered", connection.getProfile().getName());
+                }
+            }
             case Message.Ready ready -> state.ready.complete(ready);
             case Message.Restart restart -> state.ready.complete(restart);
             default -> plugin.getSLF4JLogger().warn("Unexpected {} during configuration", message.getClass().getSimpleName());
@@ -69,7 +85,7 @@ final class HandshakeModule extends Module<DumSdk> {
     }
 
     private Pending pending(PlayerConnection connection) {
-        return pending.computeIfAbsent(connection, c -> new Pending(new CompletableFuture<>(), new CompletableFuture<>()));
+        return pending.computeIfAbsent(connection, c -> new Pending());
     }
 
     private void send(PlayerConfigurationConnection connection, byte[] sha256) {
@@ -90,10 +106,15 @@ final class HandshakeModule extends Module<DumSdk> {
             byte[] hello = state.hello.get(config().getInt("hello-timeout-seconds", 10), TimeUnit.SECONDS);
             String clientVersion = accept(connection, name, hello);
             if (clientVersion == null) return;
-            connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Catalog(plugin.catalog().modules())));
+            UUID id = connection.getProfile().getId();
+            List<Message.ModuleInfo> modules = plugin.modulesFor(id);
+            state.offered = modules.stream().map(module -> Signing.hex(module.sha256())).collect(Collectors.toUnmodifiableSet());
+            connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Catalog(modules)));
             switch (state.ready.get(config().getInt("install-timeout-seconds", 120), TimeUnit.SECONDS)) {
-                case Message.Ready ready when ready.error().isEmpty() ->
-                        plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}", name, clientVersion);
+                case Message.Ready ready when ready.error().isEmpty() -> {
+                    plugin.access().grant(id, modules.stream().map(Message.ModuleInfo::id).toList());
+                    plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}", name, clientVersion);
+                }
                 case Message.Ready ready -> {
                     plugin.getSLF4JLogger().info("{} could not install modules ({}), disconnecting", name, ready.error());
                     connection.disconnect(messages().get("handshake.install-failed", Placeholder.unparsed("reason", ready.error())));

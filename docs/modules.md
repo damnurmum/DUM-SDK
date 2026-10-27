@@ -121,6 +121,11 @@ sdk.sendToModule(player, "info", bytes); // from PlayerJoinEvent on
 
 The module's data format is its own business; follow the [fair play rules](#fair-play-the-rules-every-module-follows): the server decides and checks, and sends only what the player may know (the `info` accessories send only "slot N was clicked", and the server decides what happens).
 
+DUM-SDK enforces part of the rules itself, so a module cannot forget them:
+
+- A message reaches the server side only from a player who was given the module, at most `module-messages.per-second` on average (`burst` at once) per player and module; the rest is dropped, and a client that keeps flooding is disconnected. Whatever the handler throws is logged and stays there.
+- Modules listed in `ops-only` (config of DUM-SDK) reach operators only: everyone else does not get them in the catalog, cannot download their jars, and `sendToModule` sends them nothing. `hasModule(player, id)` tells a plugin what a player has.
+
 The server itself should not leak either: Paper's anti-xray hides ores the player cannot see in the chunks it sends, with a per-world list for the Nether (ancient debris, nether gold, quartz).
 
 ## Publishing

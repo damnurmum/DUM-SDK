@@ -9,6 +9,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.ServicePriority;
@@ -24,6 +25,7 @@ import ru.dum.sdk.paper.api.DumSdkApi;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
@@ -40,6 +42,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     private Messages messages;
     private ModuleManager<DumSdk> modules;
     private final ModuleCatalog catalog = new ModuleCatalog();
+    private final ModuleAccess access = new ModuleAccess();
 
     @Override
     public void onEnable() {
@@ -101,16 +104,61 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         }
     }
 
+    /**
+     * A client module talks to its server side. Treated as possibly forged: only for a module this player was given,
+     * at a limited rate, and whatever the handler throws on it stays here.
+     */
     @Override
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
+        Message decoded;
         try {
-            if (Protocol.decode(message) instanceof Message.Module(String module, byte[] data)) {
-                Handler handler = moduleHandlers.get(module);
-                if (handler != null) handler.handler.accept(player, data);
-            }
+            decoded = Protocol.decode(message);
         } catch (IllegalArgumentException e) {
             getSLF4JLogger().warn("Malformed message from {}: {}", player.getName(), e.getMessage());
+            return;
         }
+        if (!(decoded instanceof Message.Module(String module, byte[] data))) return;
+        Handler handler = moduleHandlers.get(module);
+        if (handler == null || !access.has(player.getUniqueId(), module)) return;
+        var limits = getConfig();
+        switch (access.take(player.getUniqueId(), module, limits.getDouble("module-messages.per-second", 20),
+                limits.getInt("module-messages.burst", 40), limits.getInt("module-messages.disconnect-after", 100), System.nanoTime())) {
+            case DROP -> {
+                return;
+            }
+            case DISCONNECT -> {
+                getSLF4JLogger().warn("{} flooded module {} with messages, disconnecting", player.getName(), module);
+                player.kick(messages.get("limits.flood", Placeholder.unparsed("module", module)));
+                return;
+            }
+            case DELIVER -> {
+            }
+        }
+        try {
+            handler.handler.accept(player, data);
+        } catch (RuntimeException e) {
+            getSLF4JLogger().warn("The server side of module {} ({}) failed on a message from {}: {}",
+                    module, handler.owner.getName(), player.getName(), e.toString());
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        access.forget(event.getPlayer().getUniqueId());
+    }
+
+    ModuleAccess access() {
+        return access;
+    }
+
+    /** The catalog one player gets: modules listed in ops-only go to operators only. */
+    List<Message.ModuleInfo> modulesFor(UUID player) {
+        return catalog.modulesFor(getServer().getOfflinePlayer(player).isOp(), getConfig().getStringList("ops-only"));
+    }
+
+    @Override
+    public boolean hasModule(Player player, String module) {
+        return access.has(player.getUniqueId(), module);
     }
 
     @Override
@@ -130,6 +178,8 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
      */
     @Override
     public void sendToModule(Player player, String module, byte[] data) {
+        // Nothing goes to a player who was not given the module: an ops-only module's data stays with operators
+        if (!access.has(player.getUniqueId(), module)) return;
         player.sendPluginMessage(this, Protocol.CHANNEL, Protocol.encode(new Message.Module(module, data)));
     }
 }
