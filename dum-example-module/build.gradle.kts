@@ -3,7 +3,7 @@ plugins {
 }
 
 // A client module, not a Fabric mod: it has its own version and is loaded by DUM-SDK at runtime
-version = "0.4.0"
+version = "0.4.1"
 
 base {
     archivesName = "info"

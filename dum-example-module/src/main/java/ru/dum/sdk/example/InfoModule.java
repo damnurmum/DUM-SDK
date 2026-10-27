@@ -51,6 +51,15 @@ public final class InfoModule implements DumModule {
     private boolean hidden;
     private Path hiddenFlag;
 
+    /*
+     * What the lines show changes at most once a tick (position, time), so they are built once a tick;
+     * a frame only draws them. Building them every frame cost as much as the frame rate.
+     */
+    private List<Component> lines = List.of();
+    private int[] widths = new int[0];
+    /** Rows of the vanilla sidebar, for where the lines go. */
+    private int sidebarRows;
+
     @Override
     public void onEnable(DumContext context) {
         accessories = new Accessories(context);
@@ -60,7 +69,10 @@ public final class InfoModule implements DumModule {
         context.screen(accessories);
         context.onServerMessage(accessories::receive);
         context.hud(this::draw);
-        context.onTick(() -> deathMarker.tick(accessories.equipped(Items.COMPASS)));
+        context.onTick(() -> {
+            deathMarker.tick(accessories.equipped(Items.COMPASS));
+            refresh();
+        });
         context.key("toggle_lines", -1, this::toggle);
     }
 
@@ -77,33 +89,41 @@ public final class InfoModule implements DumModule {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+        refresh();
+    }
+
+    /** Once a tick: the lines, their widths and the sidebar size. */
+    private void refresh() {
+        Minecraft minecraft = Minecraft.getInstance();
+        Player player = minecraft.player;
+        if (hidden || player == null || minecraft.level == null) {
+            lines = List.of();
+            return;
+        }
+        List<Component> next = new ArrayList<>(2);
+        if (accessories.equipped(Items.COMPASS)) next.add(compass(player));
+        if (accessories.equipped(Items.CLOCK)) next.add(clock(minecraft.level));
+        int[] nextWidths = new int[next.size()];
+        for (int i = 0; i < nextWidths.length; i++) nextWidths[i] = minecraft.font.width(next.get(i));
+        Scoreboard scoreboard = minecraft.level.getScoreboard();
+        Objective objective = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
+        sidebarRows = objective == null ? 0 : Math.min(scoreboard.listPlayerScores(objective).size(), 15);
+        widths = nextWidths;
+        lines = List.copyOf(next);
     }
 
     private void draw(GuiGraphicsExtractor graphics, DeltaTracker delta) {
-        Minecraft minecraft = Minecraft.getInstance();
-        Player player = minecraft.player;
-        if (hidden || player == null || minecraft.level == null) return;
-
-        List<Component> lines = new ArrayList<>(2);
-        if (accessories.equipped(Items.COMPASS)) lines.add(compass(player));
-        if (accessories.equipped(Items.CLOCK)) lines.add(clock(minecraft.level));
-        if (lines.isEmpty()) return;
-
-        int bottom = sidebarTop(graphics, minecraft.level.getScoreboard()) - 4;
-        for (int i = 0; i < lines.size(); i++) {
-            Component line = lines.get(i);
-            int x = graphics.guiWidth() - minecraft.font.width(line) - 3;
-            int y = bottom - (lines.size() - i) * 10;
-            graphics.text(minecraft.font, line, x, y, 0xFFFFFFFF, true);
+        List<Component> shown = lines;
+        int[] shownWidths = widths;
+        if (shown.isEmpty() || shownWidths.length != shown.size()) return;
+        // Top of the vanilla sidebar (its title row), or where an empty one would start. Same math as the game
+        int height = sidebarRows * 9;
+        int bottom = graphics.guiHeight() / 2 + height / 3 - height - 10 - 4;
+        for (int i = 0; i < shown.size(); i++) {
+            int x = graphics.guiWidth() - shownWidths[i] - 3;
+            int y = bottom - (shown.size() - i) * 10;
+            graphics.text(Minecraft.getInstance().font, shown.get(i), x, y, 0xFFFFFFFF, true);
         }
-    }
-
-    /** Top of the vanilla sidebar (its title row), or where an empty one would start. Same math as the game. */
-    private static int sidebarTop(GuiGraphicsExtractor graphics, Scoreboard scoreboard) {
-        Objective objective = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-        int entries = objective == null ? 0 : Math.min(scoreboard.listPlayerScores(objective).size(), 15);
-        int height = entries * 9;
-        return graphics.guiHeight() / 2 + height / 3 - height - 10;
     }
 
     private static Component compass(Player player) {
