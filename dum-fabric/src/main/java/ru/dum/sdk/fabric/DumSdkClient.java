@@ -103,6 +103,7 @@ public final class DumSdkClient implements ClientModInitializer {
             case Message.Hello hello -> LOG.warn("Ignoring unexpected {} from the server", hello.getClass().getSimpleName());
             case Message.Request request -> LOG.warn("Ignoring unexpected {} from the server", request.getClass().getSimpleName());
             case Message.Ready ready -> LOG.warn("Ignoring unexpected {} from the server", ready.getClass().getSimpleName());
+            case Message.Restart restart -> LOG.warn("Ignoring unexpected {} from the server", restart.getClass().getSimpleName());
         }
     }
 

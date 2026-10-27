@@ -180,7 +180,7 @@ public final class ModuleManager {
             }
             String problem = found.containsKey(manifest.id()) ? "another jar has the same id"
                     : manifest.apiVersion() != API_VERSION ? "built for API " + manifest.apiVersion() + ", this DUM-SDK has API " + API_VERSION
-                    : !manifest.hot() ? "load mode '" + manifest.loadMode() + "' is not supported yet"
+                    : !manifest.hot() ? "load mode '" + manifest.loadMode() + "' is not a module mode: a mod that needs a restart ships as a whole Fabric mod jar"
                     : null;
             if (problem != null) {
                 LOG.warn("Skipping module {} ({}): {}", manifest.id(), jar.getFileName(), problem);

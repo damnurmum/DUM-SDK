@@ -28,7 +28,7 @@ import java.util.concurrent.TimeoutException;
 final class HandshakeModule extends Module<DumSdk> {
 
     /** What one connecting client has said so far; the client may speak before the configure event waits. */
-    private record Pending(CompletableFuture<byte[]> hello, CompletableFuture<String> ready) {
+    private record Pending(CompletableFuture<byte[]> hello, CompletableFuture<Message> ready) {
     }
 
     // ponytail: an entry stays if a client says HELLO but disconnects before the configure event; tiny, cleared on restart
@@ -62,7 +62,8 @@ final class HandshakeModule extends Module<DumSdk> {
         switch (message) {
             case Message.Hello hello -> state.hello.complete(data);
             case Message.Request request -> send(connection, request.sha256());
-            case Message.Ready ready -> state.ready.complete(ready.error());
+            case Message.Ready ready -> state.ready.complete(ready);
+            case Message.Restart restart -> state.ready.complete(restart);
             default -> plugin.getSLF4JLogger().warn("Unexpected {} during configuration", message.getClass().getSimpleName());
         }
     }
@@ -90,12 +91,18 @@ final class HandshakeModule extends Module<DumSdk> {
             String clientVersion = accept(connection, name, hello);
             if (clientVersion == null) return;
             connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Catalog(plugin.catalog().modules())));
-            String error = state.ready.get(config().getInt("install-timeout-seconds", 120), TimeUnit.SECONDS);
-            if (error.isEmpty()) {
-                plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}", name, clientVersion);
-            } else {
-                plugin.getSLF4JLogger().info("{} could not install modules ({}), disconnecting", name, error);
-                connection.disconnect(messages().get("handshake.install-failed", Placeholder.unparsed("reason", error)));
+            switch (state.ready.get(config().getInt("install-timeout-seconds", 120), TimeUnit.SECONDS)) {
+                case Message.Ready ready when ready.error().isEmpty() ->
+                        plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}", name, clientVersion);
+                case Message.Ready ready -> {
+                    plugin.getSLF4JLogger().info("{} could not install modules ({}), disconnecting", name, ready.error());
+                    connection.disconnect(messages().get("handshake.install-failed", Placeholder.unparsed("reason", ready.error())));
+                }
+                case Message.Restart restart -> {
+                    plugin.getSLF4JLogger().info("{} gets Fabric mods {} changed on restart, disconnecting", name, restart.mods());
+                    connection.disconnect(messages().get("handshake.restart", Placeholder.unparsed("mods", String.join(", ", restart.mods()))));
+                }
+                default -> throw new IllegalStateException();
             }
         } catch (TimeoutException e) {
             if (state.hello.isDone()) {

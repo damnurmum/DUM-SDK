@@ -19,7 +19,7 @@ import java.util.zip.ZipFile;
  * dum-module.json at the root of a module jar.
  *
  * @param dependencies module id to a version predicate, like {@code ">=1.2.0"} (Fabric syntax)
- * @param loadMode     "hot" (default): loaded while the game runs; "cold": needs a restart, not supported yet
+ * @param loadMode     "hot" (default), the only mode of a module; a mod that needs a restart ships as a whole Fabric mod jar
  */
 record ModuleManifest(String id, String version, int apiVersion, String entrypoint,
                       @Nullable Map<String, String> dependencies, @Nullable String loadMode) {

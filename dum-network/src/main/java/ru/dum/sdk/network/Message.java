@@ -22,8 +22,9 @@ public sealed interface Message {
      *
      * @param sha256    of the jar; also the name the client caches it under
      * @param signature Ed25519 over the jar bytes, see {@link Signing}
+     * @param fabricMod a whole Fabric mod (cold load): installed into mods/ and active after a restart
      */
-    record ModuleInfo(String id, String version, byte[] sha256, int size, byte[] signature) {
+    record ModuleInfo(String id, String version, byte[] sha256, int size, byte[] signature, boolean fabricMod) {
     }
 
     /** Client to server: send me the jar with this hash. */
@@ -36,6 +37,10 @@ public sealed interface Message {
 
     /** Client to server: every module is in place (error is empty), or why it is not. Ends the configuration phase. */
     record Ready(String error) implements Message {
+    }
+
+    /** Client to server, instead of {@link Ready}: these Fabric mods change when the game restarts. */
+    record Restart(List<String> mods) implements Message {
     }
 
     /** Either way, in the play phase: data for one client module and its server side. The format is up to the module. */

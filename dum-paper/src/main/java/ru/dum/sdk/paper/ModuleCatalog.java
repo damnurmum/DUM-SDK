@@ -23,7 +23,8 @@ import java.util.zip.ZipInputStream;
 
 /**
  * The client modules this server hands out: plugins/DUM-SDK/modules, a jar and its .jar.sig each
- * (./gradlew deploy in the module's project). Clients check the signatures themselves; checking here
+ * (./gradlew deploy in the module's project). A jar with fabric.mod.json and no dum-module.json is a whole
+ * Fabric mod, installed into the client's mods/ and active after a restart (cold load). Clients check the signatures themselves; checking here
  * only catches mistakes early.
  */
 final class ModuleCatalog {
@@ -56,13 +57,13 @@ final class ModuleCatalog {
                     log.warn("Module {}: the signature does not match any DUM-SDK key, not offered", jar.getFileName());
                     continue;
                 }
-                JsonObject manifest = manifest(bytes);
+                Manifest manifest = manifest(bytes);
                 if (manifest == null) {
-                    log.warn("Module {} has no readable dum-module.json, not offered", jar.getFileName());
+                    log.warn("Module {} has neither dum-module.json nor fabric.mod.json, not offered", jar.getFileName());
                     continue;
                 }
-                String id = manifest.get("id").getAsString();
-                String version = manifest.get("version").getAsString();
+                String id = manifest.json.get("id").getAsString();
+                String version = manifest.json.get("version").getAsString();
                 if (ids.putIfAbsent(id, jar.getFileName().toString()) != null) {
                     log.warn("Module {} ({}): {} already has this id, not offered", id, jar.getFileName(), ids.get(id));
                     continue;
@@ -71,8 +72,8 @@ final class ModuleCatalog {
                     log.warn("Module {} is signed with the dev key: only development clients accept it", id);
                 }
                 byte[] sha = Signing.sha256(bytes);
-                found.put(Signing.hex(sha), new Entry(new Message.ModuleInfo(id, version, sha, bytes.length, signature), bytes));
-                log.info("Module {} {} ({} KB)", id, version, bytes.length / 1024);
+                found.put(Signing.hex(sha), new Entry(new Message.ModuleInfo(id, version, sha, bytes.length, signature, manifest.fabricMod), bytes));
+                log.info("{} {} {} ({} KB)", manifest.fabricMod ? "Fabric mod" : "Module", id, version, bytes.length / 1024);
             }
         } catch (IOException | RuntimeException e) {
             log.error("Cannot read client modules from {}", dir, e);
@@ -93,14 +94,24 @@ final class ModuleCatalog {
         return entry == null ? null : entry.jar;
     }
 
-    private static @Nullable JsonObject manifest(byte[] jar) throws IOException {
+    /** dum-module.json of a module, or fabric.mod.json of a whole Fabric mod (cold load). */
+    private record Manifest(JsonObject json, boolean fabricMod) {
+    }
+
+    private static @Nullable Manifest manifest(byte[] jar) throws IOException {
+        JsonObject fabric = null;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(jar))) {
             for (ZipEntry entry; (entry = zip.getNextEntry()) != null; ) {
-                if (entry.getName().equals("dum-module.json")) {
-                    return JsonParser.parseReader(new InputStreamReader(zip, StandardCharsets.UTF_8)).getAsJsonObject();
+                switch (entry.getName()) {
+                    case "dum-module.json" -> {
+                        return new Manifest(JsonParser.parseReader(new InputStreamReader(zip, StandardCharsets.UTF_8)).getAsJsonObject(), false);
+                    }
+                    case "fabric.mod.json" -> fabric = JsonParser.parseReader(new InputStreamReader(zip, StandardCharsets.UTF_8)).getAsJsonObject();
+                    default -> {
+                    }
                 }
             }
         }
-        return null;
+        return fabric == null ? null : new Manifest(fabric, true);
     }
 }

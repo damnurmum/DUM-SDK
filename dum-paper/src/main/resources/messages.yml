@@ -16,3 +16,5 @@ handshake:
   install-failed: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Не удалось установить модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>.<newline><gray><reason>"
   # The client did not finish downloading modules in time
   install-timeout: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> загружались слишком долго.<newline><gray>Попробуй зайти ещё раз."
+  # Fabric mods from the server are added, updated or removed when the game restarts (cold load). <mods>: their ids
+  restart: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Изменились моды <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>: <mods>.<newline><gray>Перезапусти игру, чтобы изменения вступили в силу."

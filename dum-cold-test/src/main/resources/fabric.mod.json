@@ -1,0 +1,15 @@
+{
+	"schemaVersion": 1,
+	"id": "dumcoldtest",
+	"version": "${version}",
+	"name": "DUM cold load test",
+	"description": "Development mod for DUM-SDK cold load: adds a mark to the window title.",
+	"authors": ["DUM"],
+	"license": "MIT",
+	"environment": "client",
+	"mixins": ["dumcoldtest.mixins.json"],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.2"
+	}
+}

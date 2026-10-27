@@ -19,7 +19,7 @@ public final class Protocol {
     public static final String CHANNEL = "dum:sdk";
 
     /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
-    public static final int VERSION = 3;
+    public static final int VERSION = 4;
 
     /** Jar bytes per {@link Message.Chunk}; a plugin message may carry up to 1 MiB. */
     public static final int CHUNK_SIZE = 512 * 1024;
@@ -34,6 +34,7 @@ public final class Protocol {
     private static final byte REQUEST = 4;
     private static final byte CHUNK = 5;
     private static final byte READY = 6;
+    private static final byte RESTART = 7;
 
     private static final int SHA256 = 32;
     private static final int SIGNATURE = 64;
@@ -64,6 +65,7 @@ public final class Protocol {
                         writeFixed(out, module.sha256(), SHA256);
                         out.writeInt(module.size());
                         writeFixed(out, module.signature(), SIGNATURE);
+                        out.writeBoolean(module.fabricMod());
                     }
                 }
                 case Message.Request(byte[] sha256) -> {
@@ -80,6 +82,11 @@ public final class Protocol {
                 case Message.Ready(String error) -> {
                     out.writeByte(READY);
                     out.writeUTF(error);
+                }
+                case Message.Restart(List<String> mods) -> {
+                    out.writeByte(RESTART);
+                    out.writeInt(mods.size());
+                    for (String mod : mods) out.writeUTF(mod);
                 }
                 case Message.Module(String module, byte[] payload) -> {
                     // The data runs to the end of the message
@@ -107,13 +114,21 @@ public final class Protocol {
                     if (count < 0 || count > 1024) throw new IllegalArgumentException("Bad module count " + count);
                     List<Message.ModuleInfo> modules = new ArrayList<>(count);
                     for (int i = 0; i < count; i++) {
-                        modules.add(new Message.ModuleInfo(in.readUTF(), in.readUTF(), readFixed(in, SHA256), in.readInt(), readFixed(in, SIGNATURE)));
+                        modules.add(new Message.ModuleInfo(in.readUTF(), in.readUTF(), readFixed(in, SHA256), in.readInt(),
+                                readFixed(in, SIGNATURE), in.readBoolean()));
                     }
                     yield new Message.Catalog(List.copyOf(modules));
                 }
                 case REQUEST -> new Message.Request(readFixed(in, SHA256));
                 case CHUNK -> new Message.Chunk(readFixed(in, SHA256), in.readInt(), in.readAllBytes());
                 case READY -> new Message.Ready(in.readUTF());
+                case RESTART -> {
+                    int count = in.readInt();
+                    if (count < 0 || count > 1024) throw new IllegalArgumentException("Bad mod count " + count);
+                    List<String> mods = new ArrayList<>(count);
+                    for (int i = 0; i < count; i++) mods.add(in.readUTF());
+                    yield new Message.Restart(List.copyOf(mods));
+                }
                 case MODULE -> new Message.Module(in.readUTF(), in.readAllBytes());
                 default -> throw new IllegalArgumentException("Unknown message type " + data[0]);
             };

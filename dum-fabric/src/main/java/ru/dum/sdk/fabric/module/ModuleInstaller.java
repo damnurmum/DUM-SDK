@@ -5,6 +5,7 @@ import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.dum.sdk.fabric.cold.ColdMods;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.network.Signing;
@@ -27,7 +28,8 @@ import java.util.stream.Stream;
 
 /**
  * Brings the server's module catalog into the local cache ({@code dum-sdk/cache/<sha256>.jar}): keeps what is
- * already there, asks for the rest, checks the hash and the signature of every jar, then says READY.
+ * already there, asks for the rest, checks the hash and the signature of every jar, then says READY, or RESTART
+ * when whole Fabric mods of the catalog differ from the ones this game runs ({@link ColdMods}).
  * Runs on the network thread of the configuration phase. Texts in errors are shown to the player by the server.
  */
 public final class ModuleInstaller {
@@ -38,6 +40,7 @@ public final class ModuleInstaller {
     /** The highest version of every module ever installed: the server may not take a module back to an older one. */
     private final Path versionsFile;
     private final Consumer<Message> send;
+    private final ColdMods coldMods;
     private final Function<List<Path>, CompletableFuture<?>> installed;
     /** Dev-signed modules run only in a development client; -Ddumsdk.release=true turns that off for testing. */
     private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
@@ -67,6 +70,7 @@ public final class ModuleInstaller {
     public ModuleInstaller(Path root, Consumer<Message> send, Function<List<Path>, CompletableFuture<?>> installed) {
         this.cache = root.resolve("cache");
         this.versionsFile = root.resolve("versions.properties");
+        this.coldMods = new ColdMods(root);
         this.send = send;
         this.installed = installed;
     }
@@ -135,9 +139,16 @@ public final class ModuleInstaller {
 
     private void finish() {
         List<Path> jars = new ArrayList<>();
+        List<ColdMods.Mod> fabricMods = new ArrayList<>();
         Properties versions = loadVersions();
         for (Message.ModuleInfo module : catalog) {
             Path jar = jar(module);
+            String known = versions.getProperty(module.id());
+            if (known == null || older(known, module.version())) versions.setProperty(module.id(), module.version());
+            if (module.fabricMod()) {
+                fabricMods.add(new ColdMods.Mod(module.id(), module.version(), module.sha256(), jar));
+                continue;
+            }
             try {
                 ModuleManifest manifest = ModuleManifest.read(jar);
                 if (!manifest.id().equals(module.id()) || !manifest.version().equals(module.version())) {
@@ -149,16 +160,33 @@ public final class ModuleInstaller {
                 return;
             }
             jars.add(jar);
-            String known = versions.getProperty(module.id());
-            if (known == null || older(known, module.version())) versions.setProperty(module.id(), module.version());
         }
+        List<Path> keep = new ArrayList<>(jars);
+        fabricMods.forEach(mod -> keep.add(mod.jar()));
+        removeUnused(keep);
+        total = 0;
+        List<String> restart;
+        try {
+            restart = coldMods.sync(fabricMods);
+        } catch (IllegalStateException e) {
+            fail(e.getMessage());
+            return;
+        } catch (IOException e) {
+            LOG.error("Cannot prepare Fabric mods", e);
+            fail("не удалось подготовить моды: " + e.getMessage());
+            return;
+        }
+        // Only now is everything installed; a failed attempt must not raise the bar for older versions
         try (Writer writer = Files.newBufferedWriter(versionsFile)) {
             versions.store(writer, "Highest installed version of every DUM-SDK module");
         } catch (IOException e) {
             LOG.warn("Cannot save {}", versionsFile, e);
         }
-        removeUnused(jars);
-        total = 0;
+        if (!restart.isEmpty()) {
+            // The server disconnects us; the mods change when the game exits
+            send.accept(new Message.Restart(restart));
+            return;
+        }
         installed.apply(jars).whenComplete((result, error) -> {
             if (error != null) LOG.error("Cannot start modules", error);
             send.accept(new Message.Ready(error == null ? "" : "не удалось загрузить ресурсы модулей"));

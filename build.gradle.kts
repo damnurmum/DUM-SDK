@@ -36,10 +36,10 @@ tasks.register("generateSigningKey") {
     }
 }
 
-// Client module projects. ./gradlew :<project>:deploy signs the module jar with the key in dumSigningKey
+// Client module and cold-load mod projects. ./gradlew :<project>:deploy signs the jar with the key in dumSigningKey
 // (~/.dum/signing.key by default) and puts both into dumModulesDir, the server's plugins/DUM-SDK/modules.
 // The file name has no version, so an older one never stays next to it.
-configure(listOf(project(":dum-example-module"), project(":dum-test-module"))) {
+configure(listOf(project(":dum-example-module"), project(":dum-test-module"), project(":dum-cold-test"))) {
     tasks.register("deploy") {
         group = "dum"
         val jar = tasks.named<Jar>("jar")
