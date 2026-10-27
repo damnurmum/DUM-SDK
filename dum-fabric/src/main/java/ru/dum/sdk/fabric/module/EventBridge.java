@@ -78,7 +78,7 @@ final class EventBridge {
                     return method.invoke(listener, args);
                 } catch (InvocationTargetException e) {
                     if (e.getCause() instanceof RuntimeException || e.getCause() instanceof LinkageError) {
-                        failed.fail(module, type.getSimpleName(), e.getCause());
+                        failed.fail(module, "событие " + type.getSimpleName(), e.getCause());
                         return forward(method, neutral, args);
                     }
                     throw e.getCause();

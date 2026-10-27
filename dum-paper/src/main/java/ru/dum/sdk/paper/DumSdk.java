@@ -7,15 +7,20 @@ import io.papermc.paper.connection.PlayerConnection;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.Messenger;
 import org.bukkit.plugin.messaging.PluginMessageListener;
-import org.jspecify.annotations.Nullable;
 import ru.dum.core.api.module.ModuleHost;
 import ru.dum.core.api.module.ModuleManager;
 import ru.dum.core.config.Messages;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
+import ru.dum.sdk.paper.api.DumSdkApi;
 
 import java.util.List;
 import java.util.Map;
@@ -26,9 +31,12 @@ import java.util.function.BiConsumer;
  * DUM-SDK server side: talks to the DUM-SDK client mod over dum:sdk and carries data between client modules
  * and their server sides. Every feature is a module with its own config section.
  */
-public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessageListener {
+public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessageListener, DumSdkApi, Listener {
 
-    private final Map<String, BiConsumer<Player, byte[]>> moduleHandlers = new ConcurrentHashMap<>();
+    private record Handler(Plugin owner, BiConsumer<Player, byte[]> handler) {
+    }
+
+    private final Map<String, Handler> moduleHandlers = new ConcurrentHashMap<>();
     private Messages messages;
     private ModuleManager<DumSdk> modules;
     private final ModuleCatalog catalog = new ModuleCatalog();
@@ -42,6 +50,9 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         Messenger messenger = getServer().getMessenger();
         messenger.registerIncomingPluginChannel(this, Protocol.CHANNEL, this);
         messenger.registerOutgoingPluginChannel(this, Protocol.CHANNEL);
+
+        getServer().getServicesManager().register(DumSdkApi.class, this, this, ServicePriority.Normal);
+        getServer().getPluginManager().registerEvents(this, this);
 
         catalog.load(getDataPath().resolve("modules"), getSLF4JLogger());
         modules = new ModuleManager<>(this, List.of(new HandshakeModule(this), new AccessoriesModule(this)));
@@ -94,28 +105,31 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     public void onPluginMessageReceived(String channel, Player player, byte[] message) {
         try {
             if (Protocol.decode(message) instanceof Message.Module(String module, byte[] data)) {
-                BiConsumer<Player, byte[]> handler = moduleHandlers.get(module);
-                if (handler != null) handler.accept(player, data);
+                Handler handler = moduleHandlers.get(module);
+                if (handler != null) handler.handler.accept(player, data);
             }
         } catch (IllegalArgumentException e) {
             getSLF4JLogger().warn("Malformed message from {}: {}", player.getName(), e.getMessage());
         }
     }
 
-    /** The server side of a client module: data its clients send, on the main thread. Null removes the handler. */
-    void onModuleMessage(String module, @Nullable BiConsumer<Player, byte[]> handler) {
-        if (handler == null) {
-            moduleHandlers.remove(module);
-        } else {
-            moduleHandlers.put(module, handler);
-        }
+    @Override
+    public void onModuleMessage(Plugin owner, String module, BiConsumer<Player, byte[]> handler) {
+        moduleHandlers.put(module, new Handler(owner, handler));
+    }
+
+    /** A plugin's handlers go with it. */
+    @EventHandler
+    public void onPluginDisable(PluginDisableEvent event) {
+        moduleHandlers.values().removeIf(handler -> handler.owner == event.getPlugin());
     }
 
     /**
      * Works from PlayerJoinEvent on: the client registers dum:sdk during configuration and Paper carries
      * the registration over to the play phase (so PlayerRegisterChannelEvent does not fire for it then).
      */
-    void sendToModule(Player player, String module, byte[] data) {
+    @Override
+    public void sendToModule(Player player, String module, byte[] data) {
         player.sendPluginMessage(this, Protocol.CHANNEL, Protocol.encode(new Message.Module(module, data)));
     }
 }

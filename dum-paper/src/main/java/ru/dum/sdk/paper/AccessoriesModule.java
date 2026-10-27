@@ -38,12 +38,9 @@ final class AccessoriesModule extends Module<DumSdk> {
 
     @Override
     protected void onEnable() {
-        plugin.onModuleMessage(CLIENT_MODULE, this::click);
-    }
-
-    @Override
-    protected void onDisable() {
-        plugin.onModuleMessage(CLIENT_MODULE, null);
+        plugin.onModuleMessage(plugin, CLIENT_MODULE, (player, data) -> {
+            if (isEnabled()) click(player, data);
+        });
     }
 
     @EventHandler

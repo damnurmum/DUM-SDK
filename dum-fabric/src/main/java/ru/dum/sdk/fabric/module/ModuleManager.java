@@ -8,6 +8,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.version.VersionPredicate;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.gui.screens.Screen;
@@ -89,17 +90,17 @@ public final class ModuleManager {
 
         PacketHooks.manager = this;
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("dum-sdk", "modules"),
-                (graphics, delta) -> dispatch(m -> m.huds, hud -> hud.extractRenderState(graphics, delta)));
+                (graphics, delta) -> dispatch("HUD", m -> m.huds, hud -> hud.extractRenderState(graphics, delta)));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            dispatch(m -> List.copyOf(m.keys.entrySet()), key -> {
+            dispatch("клавиша", m -> List.copyOf(m.keys.entrySet()), key -> {
                 while (key.getKey().consumeClick()) key.getValue().run();
             });
-            dispatch(m -> m.ticks, Runnable::run);
+            dispatch("тик", m -> m.ticks, Runnable::run);
         });
         // Screen events belong to one screen and are recreated on every init
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             ScreenEvents.afterBackground(screen).register((s, graphics, mouseX, mouseY, delta) ->
-                    dispatch(m -> m.screens, layer -> layer.extract(s, graphics, mouseX, mouseY, delta)));
+                    dispatch("экран", m -> m.screens, layer -> layer.extract(s, graphics, mouseX, mouseY, delta)));
             ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
                 pressConsumed = clickConsumed(s, event);
                 return !pressConsumed;
@@ -153,7 +154,7 @@ public final class ModuleManager {
             try {
                 handler.accept(data);
             } catch (RuntimeException | LinkageError e) {
-                fail(module, "server message", e);
+                fail(module, "сообщение сервера", e);
             }
             module.nanos.addAndGet(System.nanoTime() - start);
             return;
@@ -271,7 +272,7 @@ public final class ModuleManager {
             module.instance.onEnable(module);
             LOG.info("Module {} {} is on", manifest.id(), manifest.version());
         } catch (RuntimeException | LinkageError e) {
-            fail(module, "onEnable", e);
+            fail(module, "запуск", e);
         }
     }
 
@@ -356,7 +357,7 @@ public final class ModuleManager {
                 try {
                     if (!handler.handler().test(packet)) return false;
                 } catch (RuntimeException | LinkageError e) {
-                    fail(module, packet.getClass().getSimpleName(), e);
+                    fail(module, "пакет " + packet.getClass().getSimpleName(), e);
                     break;
                 } finally {
                     module.nanos.addAndGet(System.nanoTime() - start);
@@ -374,7 +375,7 @@ public final class ModuleManager {
                 try {
                     if (layer.mouseClicked(screen, event)) return true;
                 } catch (RuntimeException | LinkageError e) {
-                    fail(module, "mouse click", e);
+                    fail(module, "клик", e);
                     break;
                 } finally {
                     module.nanos.addAndGet(System.nanoTime() - start);
@@ -385,7 +386,7 @@ public final class ModuleManager {
     }
 
     /** Calls every registration of every running module; a module that throws is turned off. */
-    private <T> void dispatch(Function<RunningModule, List<T>> registrations, Consumer<T> call) {
+    private <T> void dispatch(String where, Function<RunningModule, List<T>> registrations, Consumer<T> call) {
         for (RunningModule module : running) {
             if (module.failed) continue;
             long start = System.nanoTime();
@@ -393,7 +394,8 @@ public final class ModuleManager {
                 try {
                     call.accept(registration);
                 } catch (RuntimeException | LinkageError e) {
-                    fail(module, registration.getClass().getSimpleName(), e);
+                    fail(module, registration instanceof Map.Entry<?, ?> key && key.getKey() instanceof KeyMapping mapping
+                            ? where + " " + mapping.getName() : where, e);
                     break;
                 }
             }

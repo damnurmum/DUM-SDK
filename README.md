@@ -26,6 +26,8 @@ Work in progress. Done so far:
 
 ## Writing a module
 
+The full guide for module authors is [docs/modules.md](docs/modules.md). In short:
+
 A module is a plain jar with `dum-module.json` at its root:
 
 ```json
