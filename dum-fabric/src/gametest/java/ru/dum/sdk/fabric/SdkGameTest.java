@@ -69,6 +69,9 @@ public final class SdkGameTest implements FabricClientGameTest {
         context.waitFor(client -> client.level == null, MINUTE);
         context.waitTicks(20);
         context.runOnClient(client -> check(running().isEmpty(), "every module is unloaded after leaving, still " + running()));
+        // Dropping the modules' resources reloads them; that loading screen once never closed
+        context.waitFor(client -> client.gui.overlay() == null, MINUTE);
+        context.runOnClient(client -> check(client.gui.overlay() == null, "the loading screen after leaving closes"));
         context.setScreen(TitleScreen::new);
     }
 

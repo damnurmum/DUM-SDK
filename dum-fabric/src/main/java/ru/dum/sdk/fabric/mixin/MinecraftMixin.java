@@ -16,4 +16,10 @@ abstract class MinecraftMixin {
     private void dumsdk$leave(Screen screen, boolean keepResourcePacks, boolean stopSound, CallbackInfo ci) {
         DumSdkClient.disconnected((Minecraft) (Object) this);
     }
+
+    /** Only here may the resources be reloaded: disconnect throws away the render thread tasks queued before. */
+    @Inject(method = "disconnect(Lnet/minecraft/client/gui/screens/Screen;ZZ)V", at = @At("RETURN"))
+    private void dumsdk$left(Screen screen, boolean keepResourcePacks, boolean stopSound, CallbackInfo ci) {
+        DumSdkClient.left();
+    }
 }

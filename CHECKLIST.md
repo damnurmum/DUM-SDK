@@ -22,7 +22,7 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 - [x] Put the printed public key into `Signing.RELEASE_KEY` (dum-network), bump the version, rebuild the mod and the plugin (0.12.0).
 - [ ] A release-signed module is accepted by a client started with `-Prelease`.
 - [ ] A dev-signed module is refused by a client started with `-Prelease` ("подпись не подходит").
-- [ ] `./gradlew :dum-fabric:releaseSdk` publishes the first release with the key (needs `gh auth login` on the PC).
+- [x] `./gradlew :dum-fabric:releaseSdk` publishes the first release with the key (needs `gh auth login` on the PC). v0.12.0, 2026-10-27.
 
 ## Self-update of the mod
 

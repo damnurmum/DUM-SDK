@@ -72,7 +72,7 @@ public final class DumSdkClient implements ClientModInitializer {
         });
         ClientConfigurationConnectionEvents.DISCONNECT.register((listener, client) -> disconnected(client));
         ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> disconnected(client));
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MODULES.stop(false));
+        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MODULES.stop());
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> UPDATER.checkInBackground(version -> client.execute(() ->
                 SystemToast.add(client.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                         Component.literal("DUM-SDK " + version + " загружен"), Component.literal("Установится после перезапуска игры")))));
@@ -143,12 +143,22 @@ public final class DumSdkClient implements ClientModInitializer {
      */
     public static void disconnected(Minecraft client) {
         serverVersion = null;
-        // Right away when possible: the level still exists, so module entities can be removed from it
+        // Right away when possible: the level still exists, so module entities can be removed from it.
+        // On the render thread this is inside Minecraft.disconnect, so the resources go in left().
         if (client.isSameThread()) {
-            MODULES.stop(true);
+            MODULES.stop();
         } else {
-            client.execute(() -> MODULES.stop(true));
+            // If Minecraft.disconnect follows, it drops this task and left() does the work
+            client.execute(() -> {
+                MODULES.stop();
+                MODULES.dropResources();
+            });
         }
+    }
+
+    /** Minecraft.disconnect is done (MinecraftMixin): now the modules' resources can go without hanging the game. */
+    public static void left() {
+        MODULES.dropResources();
     }
 
     private static void receive(SdkPayload payload) {

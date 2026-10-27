@@ -161,19 +161,23 @@ public final class ModuleManager {
         }
     }
 
-    /**
-     * Turns off and unloads every running module, dependents first.
-     *
-     * @param reloadResources drop the modules' resources too; not while the game is closing
-     */
-    public void stop(boolean reloadResources) {
+    /** Turns off and unloads every running module, dependents first. Their resources stay until {@link #dropResources}. */
+    public void stop() {
         for (RunningModule module : running.reversed()) stop(module);
-        if (reloadResources) packs.set(Map.of());
         try {
             Files.deleteIfExists(activeMarker);
         } catch (IOException e) {
             LOG.warn("Cannot delete {}", activeMarker, e);
         }
+    }
+
+    /**
+     * Takes the resources of modules that no longer run off the game. Never from inside Minecraft.disconnect before it
+     * is done: it throws away the queued render thread tasks, the reload's own among them, and the loading screen
+     * would stay forever.
+     */
+    public void dropResources() {
+        if (running.isEmpty()) packs.set(Map.of());
     }
 
     private boolean isRunning(String id) {
