@@ -14,7 +14,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModuleLogicTest {
 
     private static ModuleManager.Candidate candidate(String id, String version, Map<String, String> dependencies) {
-        return new ModuleManager.Candidate(new ModuleManifest(id, version, 1, "x", dependencies, null), Path.of(id + ".jar"));
+        return new ModuleManager.Candidate(new ModuleManifest(id, version, 1, "x", dependencies, null, null), Path.of(id + ".jar"));
+    }
+
+    private static ModuleManifest manifest(String id, Boolean required) {
+        return new ModuleManifest(id, "1.0.0", 1, "x", Map.of(), null, required);
+    }
+
+    @Test
+    void modulesAreRequiredUnlessTheySayOtherwise() {
+        List<ModuleManifest> wanted = List.of(manifest("plain", null), manifest("rules", true), manifest("cosmetic", false));
+        assertEquals(List.of(), ModuleManager.missingRequired(wanted, id -> true));
+        assertEquals(List.of("plain", "rules"), ModuleManager.missingRequired(wanted, id -> false));
+        assertEquals(List.of("rules"), ModuleManager.missingRequired(wanted, id -> !id.equals("rules")));
     }
 
     private static List<String> resolve(ModuleManager.Candidate... candidates) {

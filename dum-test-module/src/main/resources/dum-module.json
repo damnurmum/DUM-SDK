@@ -2,5 +2,6 @@
 	"id": "sdktest",
 	"version": "${version}",
 	"apiVersion": 1,
-	"entrypoint": "ru.dum.sdk.test.SdkTestModule"
+	"entrypoint": "ru.dum.sdk.test.SdkTestModule",
+	"required": false
 }

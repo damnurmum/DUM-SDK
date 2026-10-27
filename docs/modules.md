@@ -44,6 +44,7 @@ Add the project to the `deploy` list in the root `build.gradle.kts`.
 - `version`: semantic version. Clients never go back to an older version of a module they have run, so publish fixes as new versions.
 - `apiVersion`: the SDK API the module is built for (`ModuleManager.API_VERSION`, now 1).
 - `dependencies`: other modules, with Fabric version predicates. Dependencies start first and stop last.
+- `required` (default `true`): without the module the player would play by other rules. If it does not start, the server refuses the join; if it fails in game, the player is disconnected with the reason. Set `false` only for modules that change nothing in the game, such as pure cosmetics.
 
 ### Lifecycle and threads
 
@@ -51,7 +52,7 @@ Add the project to the `deploy` list in the root `build.gradle.kts`.
 
 Unless stated otherwise, callbacks run on the render thread.
 
-A module that throws anywhere the SDK calls it is turned off; the player gets a toast and `/sdk` shows the error. Other modules keep running.
+A module that throws anywhere the SDK calls it is turned off and `/sdk` shows the error. If it is required (or a required module depends on it), the player is disconnected from the server; otherwise the player gets a toast and the other modules keep running.
 
 ### DumContext
 

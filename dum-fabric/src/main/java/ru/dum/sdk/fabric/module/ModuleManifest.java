@@ -20,9 +20,12 @@ import java.util.zip.ZipFile;
  *
  * @param dependencies module id to a version predicate, like {@code ">=1.2.0"} (Fabric syntax)
  * @param loadMode     "hot" (default), the only mode of a module; a mod that needs a restart ships as a whole Fabric mod jar
+ * @param required     true (default): without this module the player would play by other rules, so if it does not
+ *                     start the server refuses the join, and if it fails in game the player leaves the server.
+ *                     false only for modules that change nothing in the game, such as pure cosmetics
  */
 record ModuleManifest(String id, String version, int apiVersion, String entrypoint,
-                      @Nullable Map<String, String> dependencies, @Nullable String loadMode) {
+                      @Nullable Map<String, String> dependencies, @Nullable String loadMode, @Nullable Boolean required) {
 
     static final String FILE = "dum-module.json";
 
@@ -56,5 +59,9 @@ record ModuleManifest(String id, String version, int apiVersion, String entrypoi
 
     boolean hot() {
         return loadMode == null || loadMode.equals("hot");
+    }
+
+    boolean isRequired() {
+        return required == null || required;
     }
 }

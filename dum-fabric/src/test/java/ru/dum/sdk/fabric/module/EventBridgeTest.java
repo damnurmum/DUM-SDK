@@ -29,7 +29,7 @@ class EventBridgeTest {
     }
 
     private static RunningModule module(String id) {
-        return new RunningModule(new ModuleManifest(id, "1.0.0", 1, "x", Map.of(), null), null, null, null, null, null, null);
+        return new RunningModule(new ModuleManifest(id, "1.0.0", 1, "x", Map.of(), null, null), null, null, null, null, null, null);
     }
 
     @Test

@@ -38,6 +38,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 
 /**
  * Client modules installed from the server ({@link ModuleInstaller}): they are loaded, each in its own class loader,
@@ -70,6 +71,8 @@ public final class ModuleManager {
     public record Status(String id, String version, double millisPerSecond) {
     }
     private boolean safeMode;
+    /** Every module of the current server, to tell whether a required one has gone. Render thread only. */
+    private List<ModuleManifest> required = List.of();
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
 
@@ -123,8 +126,10 @@ public final class ModuleManager {
      */
     public CompletableFuture<Void> start(List<Path> jars) {
         if (!running.isEmpty()) return CompletableFuture.completedFuture(null);
-        List<Candidate> order = resolve(scan(jars));
-        if (order.isEmpty()) return CompletableFuture.completedFuture(null);
+        List<ModuleManifest> all = new ArrayList<>();
+        Map<String, Candidate> found = scan(jars, all);
+        List<Candidate> order = resolve(found);
+        if (all.isEmpty()) return CompletableFuture.completedFuture(null);
         // Playing without the server's modules would be playing by other rules: no join until the game restarts
         if (safeMode) {
             return CompletableFuture.failedFuture(new ModuleStartException(
@@ -142,6 +147,13 @@ public final class ModuleManager {
                 LOG.warn("Module {} is not started: a module it depends on failed", candidate.manifest.id());
             }
         }
+        List<String> missing = missingRequired(all, id -> running.stream().anyMatch(m -> m.id().equals(id) && !m.failed));
+        if (!missing.isEmpty()) {
+            stop();
+            return CompletableFuture.failedFuture(new ModuleStartException(
+                    "Не запустились модули " + String.join(", ", missing) + ", без них играть на сервере нельзя. Подробнее в логе игры"));
+        }
+        required = all;
         Map<String, Path> assets = new LinkedHashMap<>();
         for (RunningModule module : running) {
             if (ModulePacks.hasAssets(module.jar)) assets.put(module.id(), module.jar);
@@ -168,6 +180,7 @@ public final class ModuleManager {
 
     /** Turns off and unloads every running module, dependents first. Their resources stay until {@link #dropResources}. */
     public void stop() {
+        required = List.of();
         for (RunningModule module : running.reversed()) stop(module);
         try {
             Files.deleteIfExists(activeMarker);
@@ -189,10 +202,16 @@ public final class ModuleManager {
         return running.stream().anyMatch(m -> m.id().equals(id));
     }
 
+    /** Required modules of these that do not run: with any of them missing, the player may not play on the server. */
+    static List<String> missingRequired(List<ModuleManifest> modules, Predicate<String> runs) {
+        return modules.stream().filter(ModuleManifest::isRequired).map(ModuleManifest::id).filter(id -> !runs.test(id)).toList();
+    }
+
     record Candidate(ModuleManifest manifest, Path jar) {
     }
 
-    private Map<String, Candidate> scan(List<Path> jars) {
+    /** @param all gets the manifest of every readable module, the skipped ones too */
+    private Map<String, Candidate> scan(List<Path> jars, List<ModuleManifest> all) {
         Map<String, Candidate> found = new LinkedHashMap<>();
         for (Path jar : jars) {
             ModuleManifest manifest;
@@ -202,6 +221,7 @@ public final class ModuleManager {
                 LOG.warn("Skipping {}: {}", jar.getFileName(), e.getMessage());
                 continue;
             }
+            all.add(manifest);
             String problem = found.containsKey(manifest.id()) ? "another jar has the same id"
                     : manifest.apiVersion() != API_VERSION ? "built for API " + manifest.apiVersion() + ", this DUM-SDK has API " + API_VERSION
                     : !manifest.hot() ? "load mode '" + manifest.loadMode() + "' is not a module mode: a mod that needs a restart ships as a whole Fabric mod jar"
@@ -297,6 +317,12 @@ public final class ModuleManager {
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> {
             stop(module);
+            // A required module (or one it took down) is gone: playing on would be playing by other rules
+            if (!missingRequired(required, this::isRunning).isEmpty() && minecraft.getConnection() != null) {
+                minecraft.getConnection().getConnection().disconnect(Component.literal("Модуль DUM-SDK " + module.id()
+                        + " перестал работать, а без него играть на сервере нельзя. Зайди снова. Если повторится, напиши администратору"));
+                return;
+            }
             SystemToast.add(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                     Component.literal("DUM-SDK: модуль " + module.id() + " выключен"), Component.literal("Ошибка в модуле, подробнее: /sdk"));
         });
