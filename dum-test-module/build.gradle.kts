@@ -4,7 +4,7 @@ plugins {
 
 // A development module that exercises the SDK hooks: world rendering, Fabric events, packets.
 // Not for players: deploy it to a test server only.
-version = "0.1.0"
+version = "0.2.0"
 
 base {
     archivesName = "sdktest"

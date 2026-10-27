@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -24,9 +23,14 @@ import java.util.function.Function;
 final class EventBridge {
 
     private final Map<Event<?>, Hub<?>> hubs = new ConcurrentHashMap<>();
-    private final Consumer<RunningModule> failed;
+    /** Turns off a module whose listener threw: the module, where, the error. */
+    interface Failed {
+        void fail(RunningModule module, String where, Throwable error);
+    }
 
-    EventBridge(Consumer<RunningModule> failed) {
+    private final Failed failed;
+
+    EventBridge(Failed failed) {
         this.failed = failed;
     }
 
@@ -68,15 +72,18 @@ final class EventBridge {
 
         synchronized void add(RunningModule module, T listener) {
             T guarded = proxy(type, (method, args) -> {
+                if (module.failed) return forward(method, neutral, args);
+                long start = System.nanoTime();
                 try {
                     return method.invoke(listener, args);
                 } catch (InvocationTargetException e) {
                     if (e.getCause() instanceof RuntimeException || e.getCause() instanceof LinkageError) {
-                        RunningModule.LOG.error("Module {} failed in {}, turning it off", module.id(), type.getSimpleName(), e.getCause());
-                        failed.accept(module);
+                        failed.fail(module, type.getSimpleName(), e.getCause());
                         return forward(method, neutral, args);
                     }
                     throw e.getCause();
+                } finally {
+                    module.nanos.addAndGet(System.nanoTime() - start);
                 }
             });
             listeners.add(Map.entry(module, guarded));

@@ -209,6 +209,11 @@ public final class ModuleInstaller {
         }
     }
 
+    /** Fabric mods from the server that change on the next restart. */
+    public List<String> pendingRestart() {
+        return coldMods.pending();
+    }
+
     /** Fraction of the current downloads that arrived, or -1 when nothing is downloading. */
     public float progress() {
         long all = total;

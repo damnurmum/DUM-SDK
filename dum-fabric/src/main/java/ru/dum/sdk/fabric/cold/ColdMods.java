@@ -47,6 +47,8 @@ public final class ColdMods {
     private final Path mods = FabricLoader.getInstance().getGameDir().resolve("mods");
     private final Path plan;
     private boolean helperStarted;
+    /** Mods that change on the next restart, for /sdk. */
+    private volatile List<String> pending = List.of();
 
     public ColdMods(Path root) {
         this.plan = root.resolve("cold-plan.txt");
@@ -104,11 +106,22 @@ public final class ColdMods {
         }
 
         Files.writeString(plan, String.join("\n", operations), StandardCharsets.UTF_8);
+        pending = List.copyOf(changed);
         if (!operations.isEmpty()) {
             LOG.info("Fabric mods change on restart: {}", operations);
             startHelper();
         }
         return List.copyOf(changed);
+    }
+
+    public List<String> pending() {
+        return pending;
+    }
+
+    /** Fabric mods this game runs from the server: id and version. */
+    public static List<String> running() {
+        return FabricLoader.getInstance().getAllMods().stream().filter(ColdMods::isCold)
+                .map(c -> c.getMetadata().getId() + " " + c.getMetadata().getVersion().getFriendlyString()).sorted().toList();
     }
 
     /** Already running from its place in mods/, with the catalog's content. */

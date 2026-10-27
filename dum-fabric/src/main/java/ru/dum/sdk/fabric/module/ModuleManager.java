@@ -9,8 +9,10 @@ import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.version.VersionPredicate;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
@@ -24,6 +26,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -54,7 +57,17 @@ public final class ModuleManager {
     private final List<RunningModule> running = new CopyOnWriteArrayList<>();
     private final ModulePacks packs = new ModulePacks();
     private final ModuleKeys keys;
-    private final EventBridge events = new EventBridge(module -> Minecraft.getInstance().execute(() -> stop(module)));
+    private final EventBridge events = new EventBridge(this::fail);
+    /** What went wrong with modules this game session, for /sdk. */
+    private final List<Failure> failures = new CopyOnWriteArrayList<>();
+
+    /** A module that was turned off because it threw. */
+    public record Failure(String module, String where, String error, LocalTime at) {
+    }
+
+    /** A running module and how much time its code takes, in milliseconds per second since it started. */
+    public record Status(String id, String version, double millisPerSecond) {
+    }
     private boolean safeMode;
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
@@ -135,13 +148,14 @@ public final class ModuleManager {
         for (RunningModule module : running) {
             if (!module.id().equals(id)) continue;
             var handler = module.serverHandler;
-            if (handler == null) return;
+            if (handler == null || module.failed) return;
+            long start = System.nanoTime();
             try {
                 handler.accept(data);
             } catch (RuntimeException | LinkageError e) {
-                LOG.error("Module {} failed on a server message, turning it off", id, e);
-                stop(module);
+                fail(module, "server message", e);
             }
+            module.nanos.addAndGet(System.nanoTime() - start);
             return;
         }
     }
@@ -257,9 +271,35 @@ public final class ModuleManager {
             module.instance.onEnable(module);
             LOG.info("Module {} {} is on", manifest.id(), manifest.version());
         } catch (RuntimeException | LinkageError e) {
-            LOG.error("Module {} failed to start", manifest.id(), e);
-            stop(module);
+            fail(module, "onEnable", e);
         }
+    }
+
+    /**
+     * Turns off a module that threw, once, on the render thread, and tells the player. Until it is off,
+     * it gets no more calls.
+     */
+    void fail(RunningModule module, String where, Throwable error) {
+        if (module.failed) return;
+        module.failed = true;
+        LOG.error("Module {} failed in {}, turning it off", module.id(), where, error);
+        failures.add(new Failure(module.id(), where, error.toString(), LocalTime.now().withNano(0)));
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.execute(() -> {
+            stop(module);
+            SystemToast.add(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                    Component.literal("DUM-SDK: модуль " + module.id() + " выключен"), Component.literal("Ошибка в модуле, подробнее: /sdk"));
+        });
+    }
+
+    public List<Failure> failures() {
+        return List.copyOf(failures);
+    }
+
+    public List<Status> status() {
+        long now = System.nanoTime();
+        return running.stream().map(m -> new Status(m.id(), m.manifest.version(),
+                m.nanos.get() / 1e6 / Math.max(1e-3, (now - m.startedAt) / 1e9))).toList();
     }
 
     private void stop(RunningModule module) {
@@ -309,14 +349,17 @@ public final class ModuleManager {
     /** True to let the packet through; any thread for sent packets. */
     boolean packet(Packet<?> packet, boolean received) {
         for (RunningModule module : running) {
+            if (module.failed) continue;
             for (RunningModule.PacketHandler handler : received ? module.received : module.sent) {
                 if (!handler.type().isInstance(packet)) continue;
+                long start = System.nanoTime();
                 try {
                     if (!handler.handler().test(packet)) return false;
                 } catch (RuntimeException | LinkageError e) {
-                    LOG.error("Module {} failed on {}, turning it off", module.id(), packet.getClass().getSimpleName(), e);
-                    Minecraft.getInstance().execute(() -> stop(module));
+                    fail(module, packet.getClass().getSimpleName(), e);
                     break;
+                } finally {
+                    module.nanos.addAndGet(System.nanoTime() - start);
                 }
             }
         }
@@ -325,13 +368,16 @@ public final class ModuleManager {
 
     private boolean clickConsumed(Screen screen, MouseButtonEvent event) {
         for (RunningModule module : running) {
+            if (module.failed) continue;
             for (ScreenLayer layer : module.screens) {
+                long start = System.nanoTime();
                 try {
                     if (layer.mouseClicked(screen, event)) return true;
                 } catch (RuntimeException | LinkageError e) {
-                    LOG.error("Module {} failed, turning it off", module.id(), e);
-                    stop(module);
+                    fail(module, "mouse click", e);
                     break;
+                } finally {
+                    module.nanos.addAndGet(System.nanoTime() - start);
                 }
             }
         }
@@ -341,15 +387,17 @@ public final class ModuleManager {
     /** Calls every registration of every running module; a module that throws is turned off. */
     private <T> void dispatch(Function<RunningModule, List<T>> registrations, Consumer<T> call) {
         for (RunningModule module : running) {
+            if (module.failed) continue;
+            long start = System.nanoTime();
             for (T registration : registrations.apply(module)) {
                 try {
                     call.accept(registration);
                 } catch (RuntimeException | LinkageError e) {
-                    LOG.error("Module {} failed, turning it off", module.id(), e);
-                    stop(module);
+                    fail(module, registration.getClass().getSimpleName(), e);
                     break;
                 }
             }
+            module.nanos.addAndGet(System.nanoTime() - start);
         }
     }
 }

@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  * - world rendering: a gizmo box and line through walls around the block under the crosshair, and
  *   {@link WorldDraw} shapes next to a debug quad, which shader packs do not draw;
  * - Fabric events: attacking, breaking a block and using an item are reported in chat;
- * - packets: counters on the HUD, damage events in chat, and a key that drops the server's sound packets.
+ * - packets: counters on the HUD, damage events in chat, and a key that drops the server's sound packets;
+ * - diagnostics: a key that makes the module throw.
  */
 public final class SdkTestModule implements DumModule {
 
@@ -105,6 +106,11 @@ public final class SdkTestModule implements DumModule {
         context.key("mute", -1, () -> {
             muted = !muted;
             say(muted ? "звуки сервера заглушены" : "звуки сервера снова слышны");
+        });
+
+        // Diagnostics: a module that throws is turned off, the player gets a toast, /sdk lists the error
+        context.key("fail", -1, () -> {
+            throw new IllegalStateException("тестовая ошибка по клавише");
         });
 
         context.hud((graphics, delta) -> graphics.text(Minecraft.getInstance().font,

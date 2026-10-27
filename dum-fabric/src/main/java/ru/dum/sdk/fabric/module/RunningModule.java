@@ -27,13 +27,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /** A module that is turned on, and everything it registered through its context. */
 final class RunningModule implements DumContext {
-
-    static final Logger LOG = LoggerFactory.getLogger("DUM-SDK");
 
     /** A packet handler: the type it wants and what to do with it. */
     record PacketHandler(Class<?> type, Predicate<Object> handler) {
@@ -49,6 +48,11 @@ final class RunningModule implements DumContext {
     volatile @Nullable Consumer<byte[]> serverHandler;
     final Map<KeyMapping, Runnable> keys = new ConcurrentHashMap<>();
     final List<Entity> entities = new CopyOnWriteArrayList<>();
+    /** Time spent in this module's code, for /sdk. */
+    final AtomicLong nanos = new AtomicLong();
+    final long startedAt = System.nanoTime();
+    /** Threw and is being turned off: gets no more calls. */
+    volatile boolean failed;
     final List<PacketHandler> received = new CopyOnWriteArrayList<>();
     final List<PacketHandler> sent = new CopyOnWriteArrayList<>();
     private final ModuleKeys keyStore;

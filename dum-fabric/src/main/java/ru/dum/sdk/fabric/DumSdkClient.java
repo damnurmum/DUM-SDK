@@ -1,6 +1,8 @@
 package ru.dum.sdk.fabric;
 
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientConfigurationNetworking;
@@ -19,12 +21,14 @@ import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ru.dum.sdk.fabric.cold.ColdMods;
 import ru.dum.sdk.fabric.module.ModuleInstaller;
 import ru.dum.sdk.fabric.module.ModuleManager;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -74,7 +78,43 @@ public final class DumSdkClient implements ClientModInitializer {
             // Whatever screen the game shows while joining
             ScreenEvents.afterExtract(screen).register((s, graphics, mouseX, mouseY, delta) -> drawDownload(s, graphics));
         });
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) ->
+                dispatcher.register(ClientCommands.literal("sdk").executes(context -> {
+                    report().forEach(context.getSource()::sendFeedback);
+                    return 1;
+                })));
         LOG.info("DUM-SDK {} (protocol {})", VERSION, Protocol.VERSION);
+    }
+
+    /** /sdk: what runs, how much time it takes and what went wrong. */
+    private static List<Component> report() {
+        List<Component> lines = new ArrayList<>();
+        String server = serverVersion;
+        lines.add(Component.literal("DUM-SDK " + VERSION).withStyle(ChatFormatting.GOLD)
+                .append(Component.literal(server != null ? " · сервер " + server : " · не подключено").withStyle(ChatFormatting.GRAY)));
+        if (MODULES.safeMode()) {
+            lines.add(Component.literal("Безопасный режим: игра закрылась с ошибкой, модули выключены до перезапуска").withStyle(ChatFormatting.YELLOW));
+        }
+        List<ModuleManager.Status> modules = MODULES.status();
+        lines.add(Component.literal(modules.isEmpty() ? "Модули: нет" : "Модули:").withStyle(ChatFormatting.GRAY));
+        for (ModuleManager.Status module : modules) {
+            lines.add(Component.literal("  " + module.id() + " " + module.version()).withStyle(ChatFormatting.WHITE)
+                    .append(Component.literal(String.format(" · %.2f мс/с", module.millisPerSecond())).withStyle(ChatFormatting.GRAY)));
+        }
+        List<String> fabricMods = ColdMods.running();
+        if (!fabricMods.isEmpty()) {
+            lines.add(Component.literal("Моды с сервера: ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(String.join(", ", fabricMods)).withStyle(ChatFormatting.WHITE)));
+        }
+        List<String> pending = INSTALLER.pendingRestart();
+        if (!pending.isEmpty()) {
+            lines.add(Component.literal("После перезапуска изменятся: " + String.join(", ", pending)).withStyle(ChatFormatting.YELLOW));
+        }
+        for (ModuleManager.Failure failure : MODULES.failures()) {
+            lines.add(Component.literal("  " + failure.at() + " " + failure.module() + " выключен (" + failure.where() + "): ").withStyle(ChatFormatting.RED)
+                    .append(Component.literal(failure.error()).withStyle(ChatFormatting.GRAY)));
+        }
+        return lines;
     }
 
     private static void disconnected(Minecraft client) {

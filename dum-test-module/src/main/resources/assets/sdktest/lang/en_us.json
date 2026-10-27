@@ -1,3 +1,4 @@
 {
-	"key.sdktest.mute": "Тест SDK: заглушить звуки сервера"
+	"key.sdktest.mute": "Тест SDK: заглушить звуки сервера",
+	"key.sdktest.fail": "Тест SDK: сломать модуль"
 }
