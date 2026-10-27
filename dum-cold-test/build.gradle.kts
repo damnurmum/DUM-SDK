@@ -4,7 +4,7 @@ plugins {
 
 // A development Fabric mod for the cold load path: a real mixin, delivered by the server, active after a restart.
 // Not for players: deploy it to a test server only.
-version = "0.2.0"
+version = "0.3.0"
 
 base {
     archivesName = "dumcoldtest"
