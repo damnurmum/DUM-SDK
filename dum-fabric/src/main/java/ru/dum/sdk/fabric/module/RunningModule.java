@@ -2,6 +2,8 @@ package ru.dum.sdk.fabric.module;
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
+import net.fabricmc.fabric.api.event.Event;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -26,9 +28,16 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /** A module that is turned on, and everything it registered through its context. */
 final class RunningModule implements DumContext {
+
+    static final Logger LOG = LoggerFactory.getLogger("DUM-SDK");
+
+    /** A packet handler: the type it wants and what to do with it. */
+    record PacketHandler(Class<?> type, Predicate<Object> handler) {
+    }
 
     final ModuleManifest manifest;
     final Path jar;
@@ -40,14 +49,19 @@ final class RunningModule implements DumContext {
     volatile @Nullable Consumer<byte[]> serverHandler;
     final Map<KeyMapping, Runnable> keys = new ConcurrentHashMap<>();
     final List<Entity> entities = new CopyOnWriteArrayList<>();
+    final List<PacketHandler> received = new CopyOnWriteArrayList<>();
+    final List<PacketHandler> sent = new CopyOnWriteArrayList<>();
     private final ModuleKeys keyStore;
+    private final EventBridge events;
     /** Client-only entities get negative ids, so they never clash with the server's. */
     private static int nextEntityId = -1_000_000;
     private final Logger logger;
     private final Path dataDir;
 
-    RunningModule(ModuleManifest manifest, Path jar, URLClassLoader loader, DumModule instance, Path dataDir, ModuleKeys keyStore) {
+    RunningModule(ModuleManifest manifest, Path jar, URLClassLoader loader, DumModule instance, Path dataDir,
+                  ModuleKeys keyStore, EventBridge events) {
         this.keyStore = keyStore;
+        this.events = events;
         this.manifest = manifest;
         this.jar = jar;
         this.loader = loader;
@@ -118,7 +132,27 @@ final class RunningModule implements DumContext {
         entities.add(entity);
     }
 
+    @Override
+    public <T> void on(Event<T> event, T listener) {
+        events.add(this, event, listener);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <P extends Packet<?>> void onReceive(Class<P> type, Predicate<? super P> handler) {
+        received.add(new PacketHandler(type, packet -> ((Predicate<Object>) handler).test(packet)));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <P extends Packet<?>> void onSend(Class<P> type, Predicate<? super P> handler) {
+        sent.add(new PacketHandler(type, packet -> ((Predicate<Object>) handler).test(packet)));
+    }
+
     void clear() {
+        events.remove(this);
+        received.clear();
+        sent.clear();
         ticks.clear();
         huds.clear();
         screens.clear();

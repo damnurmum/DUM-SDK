@@ -1,0 +1,13 @@
+{
+	"required": true,
+	"package": "ru.dum.sdk.fabric.mixin",
+	"compatibilityLevel": "JAVA_21",
+	"client": [
+		"ClientPacketListenerMixin",
+		"ConnectionMixin",
+		"ListenerAndPacketMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}

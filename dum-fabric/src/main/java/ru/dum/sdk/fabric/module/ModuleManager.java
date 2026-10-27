@@ -8,8 +8,10 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.version.VersionPredicate;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,6 +54,7 @@ public final class ModuleManager {
     private final List<RunningModule> running = new CopyOnWriteArrayList<>();
     private final ModulePacks packs = new ModulePacks();
     private final ModuleKeys keys;
+    private final EventBridge events = new EventBridge(module -> Minecraft.getInstance().execute(() -> stop(module)));
     private boolean safeMode;
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
@@ -71,6 +74,7 @@ public final class ModuleManager {
         }
         if (safeMode) LOG.warn("The game did not close cleanly while modules were running: safe mode, modules stay off until restart");
 
+        PacketHooks.manager = this;
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("dum-sdk", "modules"),
                 (graphics, delta) -> dispatch(m -> m.huds, hud -> hud.extractRenderState(graphics, delta)));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -242,7 +246,7 @@ public final class ModuleManager {
         RunningModule module;
         try {
             DumModule instance = loader.loadClass(manifest.entrypoint()).asSubclass(DumModule.class).getConstructor().newInstance();
-            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys);
+            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys, events);
         } catch (ReflectiveOperationException | ClassCastException | LinkageError e) {
             LOG.error("Cannot create module {} from {}", manifest.id(), manifest.entrypoint(), e);
             close(loader, manifest.id());
@@ -300,6 +304,23 @@ public final class ModuleManager {
                 LOG.warn("Module {} is still in memory after unloading: something holds a reference to its classes", id);
             }
         });
+    }
+
+    /** True to let the packet through; any thread for sent packets. */
+    boolean packet(Packet<?> packet, boolean received) {
+        for (RunningModule module : running) {
+            for (RunningModule.PacketHandler handler : received ? module.received : module.sent) {
+                if (!handler.type().isInstance(packet)) continue;
+                try {
+                    if (!handler.handler().test(packet)) return false;
+                } catch (RuntimeException | LinkageError e) {
+                    LOG.error("Module {} failed on {}, turning it off", module.id(), packet.getClass().getSimpleName(), e);
+                    Minecraft.getInstance().execute(() -> stop(module));
+                    break;
+                }
+            }
+        }
+        return true;
     }
 
     private boolean clickConsumed(Screen screen, MouseButtonEvent event) {

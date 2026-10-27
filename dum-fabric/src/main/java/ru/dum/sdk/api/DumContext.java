@@ -1,12 +1,15 @@
 package ru.dum.sdk.api;
 
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
+import net.fabricmc.fabric.api.event.Event;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.world.entity.Entity;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * What the SDK gives a running module. Everything registered here is removed when the module is turned off.
@@ -49,4 +52,19 @@ public interface DumContext {
      * It goes away with the level (dimension change, respawn), so check {@link Entity#isRemoved()} and add a new one.
      */
     void addEntity(Entity entity);
+
+    /**
+     * Listens to any Fabric API event, such as {@code LevelRenderEvents.BEFORE_GIZMOS} or {@code AttackEntityCallback.EVENT}.
+     * Listeners of all modules are combined exactly as Fabric combines them; this module's leave when it stops.
+     */
+    <T> void on(Event<T> event, T listener);
+
+    /**
+     * Every packet of this type (or a subtype) from the server, on the render thread, before the game handles it.
+     * Packets of a bundle come one by one. Return false to drop the packet: the game never sees it.
+     */
+    <P extends Packet<?>> void onReceive(Class<P> type, Predicate<? super P> handler);
+
+    /** Every packet of this type the game sends to the server, on the sending thread (usually the render thread). False drops it. */
+    <P extends Packet<?>> void onSend(Class<P> type, Predicate<? super P> handler);
 }

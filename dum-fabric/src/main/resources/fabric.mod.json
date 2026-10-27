@@ -8,6 +8,7 @@
 	"license": "MIT",
 	"environment": "client",
 	"accessWidener": "dum-sdk.classtweaker",
+	"mixins": ["dum-sdk.mixins.json"],
 	"entrypoints": {
 		"client": ["ru.dum.sdk.fabric.DumSdkClient"]
 	},

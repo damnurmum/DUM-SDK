@@ -6,11 +6,21 @@ base {
     archivesName = "DUM-SDK"
 }
 
+repositories {
+    maven("https://api.modrinth.com/maven") {
+        content { includeGroup("maven.modrinth") }
+    }
+}
+
 dependencies {
     minecraft("com.mojang:minecraft:${property("minecraft_version")}")
     implementation("net.fabricmc:fabric-loader:${property("loader_version")}")
     implementation("net.fabricmc.fabric-api:fabric-api:${property("fabric_api_version")}")
     implementation(project(":dum-network"))
+
+    // ./gradlew runClient -Psodium, or -Piris (with Sodium): render the way the players have it. Dev client only
+    if (hasProperty("sodium") || hasProperty("iris")) localRuntime("maven.modrinth:sodium:mc26.2-0.9.2-fabric")
+    if (hasProperty("iris")) localRuntime("maven.modrinth:iris:1.11.4+26.2-fabric")
 }
 
 loom {
