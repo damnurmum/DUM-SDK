@@ -64,6 +64,8 @@ loom {
     }
     runs.matching { it.name == "clientGameTest" }.configureEach {
         vmArg("-Ddumsdk.testServer=${findProperty("testServer") ?: "localhost"}")
+        // -PgameDir=<folder>: the game folder somewhere else, e.g. with Cyrillic letters and spaces in its path
+        if (project.hasProperty("gameDir")) programArgs("--gameDir", project.property("gameDir").toString())
     }
 }
 

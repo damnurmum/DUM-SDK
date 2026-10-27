@@ -12,9 +12,9 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 - [x] Cold load, update: publish a newer version, join, restart, check the new version runs (the `dumcoldtest` title mark shows it). 0.2.0 to 0.3.0, one jar left in `mods\`.
 - [x] Cold load, removal: take the mod off the server, join, restart, check the jar is gone from `mods\`. Title mark gone too.
 - [x] Closing the game with the launcher's Kill button instead of the normal way: does the helper still apply the plan? If not, the next join asks for one more restart (acceptable, but good to know). Yes: MultiMC's Kill leaves the helper alone and it applies the plan (2026-10-27).
-- [ ] A user folder with Cyrillic letters or spaces in the path: modules, cache and cold load still work.
+- [x] A user folder with Cyrillic letters or spaces in the path: modules, cache and cold load still work. 2026-10-27: the game test with `-PgameDir=...\Тест папка\игра` (download, cache, class loaders, module resource packs), and the ColdApply helper copying and deleting jars with Cyrillic names in a folder with spaces.
 - [x] Safe mode: kill the game while modules run, start it again, the pause menu shows the safe mode status. Checked by the author 2026-10-27 (MultiMC Kill).
-- [ ] Safe mode and joining (0.12.6): in safe mode the server refuses the join with "Перезапусти игру"; after one more restart the join works and the modules run.
+- [x] Safe mode and joining (0.12.6): in safe mode the server refuses the join with "Перезапусти игру"; after one more restart the join works and the modules run. Checked by the author 2026-10-27.
 - [x] Server side limits (0.14.0): module messages only from players given the module, rate limit per player and module (unit tests), `ops-only` modules not offered to other players (game test with sdktest ops-only: the client got only info). Checked 2026-10-27.
 - [ ] Rate limit with a real flood: a changed client spamming a module gets disconnected with "прислал серверу слишком много сообщений".
 - [x] Required modules (0.13.0): a required module failing in game disconnects the player with the reason. Checked 2026-10-27 with the game test and sdktest built as required; an optional one (sdktest as shipped) only turns itself off.
