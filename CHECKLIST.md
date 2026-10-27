@@ -11,9 +11,9 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 - [x] Cold load, first install: join, get the restart message, close the game, check that `mods\dum-cold-<id>.jar` appears and `dum-sdk\cold-apply.log` says `done`. 2026-10-27, MultiMC, dumcoldtest 0.2.0.
 - [x] Cold load, update: publish a newer version, join, restart, check the new version runs (the `dumcoldtest` title mark shows it). 0.2.0 to 0.3.0, one jar left in `mods\`.
 - [x] Cold load, removal: take the mod off the server, join, restart, check the jar is gone from `mods\`. Title mark gone too.
-- [ ] Closing the game with the launcher's Kill button instead of the normal way: does the helper still apply the plan? If not, the next join asks for one more restart (acceptable, but good to know).
+- [x] Closing the game with the launcher's Kill button instead of the normal way: does the helper still apply the plan? If not, the next join asks for one more restart (acceptable, but good to know). Yes: MultiMC's Kill leaves the helper alone and it applies the plan (2026-10-27).
 - [ ] A user folder with Cyrillic letters or spaces in the path: modules, cache and cold load still work.
-- [ ] Safe mode: kill the game while modules run, start it again, the pause menu shows the safe mode status.
+- [x] Safe mode: kill the game while modules run, start it again, the pause menu shows the safe mode status. Checked by the author 2026-10-27 (MultiMC Kill).
 
 ## Release signing key
 
