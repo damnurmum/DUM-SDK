@@ -1,3 +1,9 @@
+import java.security.KeyFactory
+import java.security.Signature
+import java.security.spec.PKCS8EncodedKeySpec
+import java.security.spec.X509EncodedKeySpec
+import java.util.Base64
+
 plugins {
     id("net.fabricmc.fabric-loom")
 }
@@ -51,6 +57,10 @@ loom {
         if (project.hasProperty("release")) {
             vmArg("-Ddumsdk.release=true")
         }
+        // ./gradlew runClient -PupdateTest=<url of a release JSON> runs the self-update against that fake release
+        if (project.hasProperty("updateTest")) {
+            vmArgs("-Ddumsdk.updateTest=true", "-Ddumsdk.updateUrl=${project.property("updateTest")}")
+        }
     }
     runs.matching { it.name == "clientGameTest" }.configureEach {
         vmArg("-Ddumsdk.testServer=${findProperty("testServer") ?: "localhost"}")
@@ -70,5 +80,43 @@ tasks {
 
     jar {
         from(project(":dum-network").extensions.getByType<SourceSetContainer>()["main"].output)
+    }
+
+    // ./gradlew :dum-fabric:releaseSdk, on the PC with the release key: builds the mod, signs it, makes sure the key
+    // is the one in Signing.RELEASE_KEY and publishes GitHub release v<version> with DUM-SDK.jar and its .sig (gh CLI).
+    // Players' mods pick it up on their next game start. Push the code first: the release tags main.
+    register("releaseSdk") {
+        group = "dum"
+        val built = jar.flatMap { it.archiveFile }
+        val keyPath = providers.gradleProperty("dumSigningKey").orElse("${System.getProperty("user.home")}/.dum/signing.key")
+        val signingSource = rootProject.file("dum-network/src/main/java/ru/dum/sdk/network/Signing.java")
+        val version = project.version.toString()
+        val out = layout.buildDirectory.dir("release")
+        dependsOn(jar)
+        doLast {
+            val releaseKey = Regex("RELEASE_KEY = \"([^\"]*)\"").find(signingSource.readText())!!.groupValues[1]
+            if (releaseKey.isEmpty()) throw GradleException("Signing.RELEASE_KEY is empty: run generateSigningKey and put the public key there first")
+            val key = KeyFactory.getInstance("Ed25519").generatePrivate(
+                PKCS8EncodedKeySpec(Base64.getDecoder().decode(File(keyPath.get()).readText().trim())))
+            val bytes = built.get().asFile.readBytes()
+            val signature = Signature.getInstance("Ed25519").run {
+                initSign(key)
+                update(bytes)
+                sign()
+            }
+            // The mods out there check releases with RELEASE_KEY: anything else would be refused by all of them
+            val matches = Signature.getInstance("Ed25519").run {
+                initVerify(KeyFactory.getInstance("Ed25519").generatePublic(X509EncodedKeySpec(Base64.getDecoder().decode(releaseKey))))
+                update(bytes)
+                verify(signature)
+            }
+            if (!matches) throw GradleException("${keyPath.get()} is not the release key from Signing.RELEASE_KEY")
+            val dir = out.get().asFile.apply { mkdirs() }
+            File(dir, "DUM-SDK.jar").writeBytes(bytes)
+            File(dir, "DUM-SDK.jar.sig").writeBytes(signature)
+            val gh = ProcessBuilder("gh", "release", "create", "v$version", "DUM-SDK.jar", "DUM-SDK.jar.sig",
+                "--title", "DUM-SDK $version", "--notes", "DUM-SDK $version").directory(dir).inheritIO().start()
+            if (gh.waitFor() != 0) throw GradleException("gh release create failed")
+        }
     }
 }

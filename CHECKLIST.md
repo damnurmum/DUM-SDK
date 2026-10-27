@@ -21,6 +21,15 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 - [ ] Put the printed public key into `Signing.RELEASE_KEY` (dum-network), bump the version, rebuild the mod and the plugin.
 - [ ] A release-signed module is accepted by a client started with `-Prelease`.
 - [ ] A dev-signed module is refused by a client started with `-Prelease` ("подпись не подходит").
+- [ ] `./gradlew :dum-fabric:releaseSdk` publishes the first release with the key (needs `gh auth login` on the PC).
+
+## Self-update of the mod
+
+Checked on the Mac only in a dev client against a fake release (download, signature, toast, helper copies the jar).
+
+- [ ] In MultiMC: with release N installed, publish N+1; start the game, see the toast, close the game, and check that `mods` now has `DUM-SDK-<N+1>.jar` and no longer the old jar.
+- [ ] The next start runs N+1 (`/sdk` shows it) and the server lets it in.
+- [ ] A client whose protocol is too old: the server's message says the mod updates itself after a restart, and it does.
 
 ## The players' real client
 

@@ -2,6 +2,7 @@ package ru.dum.sdk.fabric.cold;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -12,13 +13,34 @@ import java.util.List;
 
 /**
  * A separate process that changes mods/ after the game has exited: a running game holds its mod jars open,
- * and Windows lets nobody replace or delete them until then. Uses nothing but the JDK.
+ * and Windows lets nobody replace or delete them until then. Used for Fabric mods from the server and for
+ * updates of DUM-SDK itself. Its main uses nothing but the JDK.
  * Arguments: the game's process id and the plan file, one operation per line:
  * {@code copy<TAB>from<TAB>to} or {@code delete<TAB>path}.
  */
 public final class ColdApply {
 
     private ColdApply() {
+    }
+
+    /**
+     * Starts the helper for this plan in a separate JVM: the same java, with nothing but the classes ColdApply
+     * came from (the DUM-SDK jar, or the classes folder in development). It applies the plan as it is when the game exits.
+     */
+    public static void start(Path plan) throws IOException {
+        String java = ProcessHandle.current().info().command()
+                .orElse(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+        String classpath;
+        try {
+            classpath = Path.of(ColdApply.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
+        } catch (URISyntaxException | NullPointerException e) {
+            throw new IOException("Cannot find the DUM-SDK classes for the helper", e);
+        }
+        new ProcessBuilder(java, "-cp", classpath, ColdApply.class.getName(),
+                String.valueOf(ProcessHandle.current().pid()), plan.toAbsolutePath().toString())
+                .redirectErrorStream(true)
+                .redirectOutput(ProcessBuilder.Redirect.appendTo(plan.resolveSibling("cold-apply.log").toFile()))
+                .start();
     }
 
     public static void main(String[] args) throws Exception {

@@ -16,7 +16,6 @@ import ru.dum.sdk.network.Signing;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -191,21 +190,7 @@ public final class ColdMods {
     /** Starts {@link ColdApply} once per game session; it reads the latest plan when the game exits. */
     private void startHelper() throws IOException {
         if (helperStarted) return;
-        String java = ProcessHandle.current().info().command()
-                .orElse(Path.of(System.getProperty("java.home"), "bin", "java").toString());
-        // Wherever ColdApply itself came from: the DUM-SDK jar, or the classes folder in development
-        String classpath;
-        try {
-            classpath = Path.of(ColdApply.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString();
-        } catch (URISyntaxException | NullPointerException e) {
-            throw new IOException("Cannot find the DUM-SDK classes for the helper", e);
-        }
-        LOG.info("Helper classpath: {}", classpath);
-        new ProcessBuilder(java, "-cp", classpath, ColdApply.class.getName(),
-                String.valueOf(ProcessHandle.current().pid()), plan.toAbsolutePath().toString())
-                .redirectErrorStream(true)
-                .redirectOutput(ProcessBuilder.Redirect.appendTo(plan.resolveSibling("cold-apply.log").toFile()))
-                .start();
+        ColdApply.start(plan);
         helperStarted = true;
         LOG.info("Started the helper that changes mods/ after the game exits");
     }

@@ -69,6 +69,18 @@ dumCorePath=/path/to/DUM-Core
 
 `./gradlew :dum-fabric:runClient -Pjoin=localhost` starts a dev client and connects to a local server.
 
+## Releasing the mod
+
+The mod updates itself from GitHub Releases: at every game start it looks at the latest release, and a newer `DUM-SDK.jar` signed with the release key replaces the installed one after the game exits (the player sees a toast). Releases are made on the PC that holds the key, after pushing the code:
+
+```
+./gradlew :dum-fabric:releaseSdk
+```
+
+It builds and signs the jar, refuses a key that is not `Signing.RELEASE_KEY`, and creates release `v<version>` with `DUM-SDK.jar` and `DUM-SDK.jar.sig` through the `gh` CLI. Bump `version` in `gradle.properties` first. Updating works from the first release that already carries the release key.
+
+`./gradlew :dum-fabric:runClient -PupdateTest=<url of a release JSON>` runs the self-update in a dev client against a fake release (dev-signed jars are accepted then).
+
 ## Tests
 
 - `./gradlew test`: unit tests of the wire format, signatures, the event bridge, module dependencies and version order.

@@ -15,6 +15,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -24,6 +25,7 @@ import org.slf4j.LoggerFactory;
 import ru.dum.sdk.fabric.cold.ColdMods;
 import ru.dum.sdk.fabric.module.ModuleInstaller;
 import ru.dum.sdk.fabric.module.ModuleManager;
+import ru.dum.sdk.fabric.update.SdkUpdater;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 
@@ -45,6 +47,7 @@ public final class DumSdkClient implements ClientModInitializer {
 
     private static final Path ROOT = FabricLoader.getInstance().getGameDir().resolve("dum-sdk");
     private static final ModuleManager MODULES = new ModuleManager(ROOT);
+    private static final SdkUpdater UPDATER = new SdkUpdater(ROOT, VERSION);
     private static final ModuleInstaller INSTALLER = new ModuleInstaller(ROOT,
             message -> ClientConfigurationNetworking.send(new SdkPayload(Protocol.encode(message))),
             jars -> CompletableFuture.supplyAsync(() -> MODULES.start(jars), Minecraft.getInstance())
@@ -70,6 +73,9 @@ public final class DumSdkClient implements ClientModInitializer {
         ClientConfigurationConnectionEvents.DISCONNECT.register((listener, client) -> disconnected(client));
         ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> disconnected(client));
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> MODULES.stop(false));
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> UPDATER.checkInBackground(version -> client.execute(() ->
+                SystemToast.add(client.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                        Component.literal("DUM-SDK " + version + " загружен"), Component.literal("Установится после перезапуска игры")))));
 
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             if (screen instanceof PauseScreen pause && pause.showsPauseMenu()) {
@@ -115,6 +121,10 @@ public final class DumSdkClient implements ClientModInitializer {
         if (!fabricMods.isEmpty()) {
             lines.add(Component.literal("Моды с сервера: ").withStyle(ChatFormatting.GRAY)
                     .append(Component.literal(String.join(", ", fabricMods)).withStyle(ChatFormatting.WHITE)));
+        }
+        String update = UPDATER.pending();
+        if (update != null) {
+            lines.add(Component.literal("DUM-SDK " + update + " установится после перезапуска").withStyle(ChatFormatting.YELLOW));
         }
         List<String> pending = INSTALLER.pendingRestart();
         if (!pending.isEmpty()) {
