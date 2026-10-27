@@ -86,6 +86,16 @@ public final class DumSdkClient implements ClientModInitializer {
         LOG.info("DUM-SDK {} (protocol {})", VERSION, Protocol.VERSION);
     }
 
+    /** For the client game test. */
+    static ModuleManager modules() {
+        return MODULES;
+    }
+
+    /** For the client game test: the version of the server that accepted us, or null. */
+    static @Nullable String serverVersion() {
+        return serverVersion;
+    }
+
     /** /sdk: what runs, how much time it takes and what went wrong. */
     private static List<Component> report() {
         List<Component> lines = new ArrayList<>();
@@ -117,9 +127,18 @@ public final class DumSdkClient implements ClientModInitializer {
         return lines;
     }
 
-    private static void disconnected(Minecraft client) {
+    /**
+     * Leaving a server, however it happens: the Fabric disconnect events do not fire when the player leaves
+     * by himself, so {@code MinecraftMixin} also calls this. Stopping twice does nothing.
+     */
+    public static void disconnected(Minecraft client) {
         serverVersion = null;
-        client.execute(() -> MODULES.stop(true));
+        // Right away when possible: the level still exists, so module entities can be removed from it
+        if (client.isSameThread()) {
+            MODULES.stop(true);
+        } else {
+            client.execute(() -> MODULES.stop(true));
+        }
     }
 
     private static void receive(SdkPayload payload) {

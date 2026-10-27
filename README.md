@@ -69,6 +69,11 @@ dumCorePath=/path/to/DUM-Core
 
 `./gradlew :dum-fabric:runClient -Pjoin=localhost` starts a dev client and connects to a local server.
 
+## Tests
+
+- `./gradlew test`: unit tests of the wire format, signatures, the event bridge, module dependencies and version order.
+- `./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port]`: an end-to-end client game test. Start a test server first (DUM-Core, DUM-SDK, the `info` and `sdktest` modules, no cold-load mods); the client joins it by itself, checks the handshake and the modules, breaks `sdktest` with its key and checks that only it went down, runs `/sdk`, leaves and checks that everything is unloaded. Screenshots land in `dum-fabric/build/run/clientGameTest/screenshots`.
+
 ## Manual checks
 
 What still has to be verified on the real setup (Windows PC, VDS, the players' clients) is listed in [CHECKLIST.md](CHECKLIST.md).

@@ -5,7 +5,8 @@
 	"client": [
 		"ClientPacketListenerMixin",
 		"ConnectionMixin",
-		"ListenerAndPacketMixin"
+		"ListenerAndPacketMixin",
+		"MinecraftMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

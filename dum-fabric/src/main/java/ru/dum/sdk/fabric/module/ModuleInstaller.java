@@ -260,7 +260,7 @@ public final class ModuleInstaller {
         return versions;
     }
 
-    private static boolean older(String version, String than) {
+    static boolean older(String version, String than) {
         try {
             return Version.parse(version).compareTo(Version.parse(than)) < 0;
         } catch (VersionParsingException e) {

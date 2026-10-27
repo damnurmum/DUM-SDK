@@ -180,7 +180,7 @@ public final class ModuleManager {
         return running.stream().anyMatch(m -> m.id().equals(id));
     }
 
-    private record Candidate(ModuleManifest manifest, Path jar) {
+    record Candidate(ModuleManifest manifest, Path jar) {
     }
 
     private Map<String, Candidate> scan(List<Path> jars) {
@@ -207,7 +207,7 @@ public final class ModuleManager {
     }
 
     /** Drops modules with missing or mismatched dependencies and orders the rest dependencies first. */
-    private List<Candidate> resolve(Map<String, Candidate> found) {
+    static List<Candidate> resolve(Map<String, Candidate> found) {
         boolean changed = true;
         while (changed) {
             changed = false;

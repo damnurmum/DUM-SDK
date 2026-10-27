@@ -1,0 +1,13 @@
+{
+	"schemaVersion": 1,
+	"id": "dum-sdk-gametest",
+	"version": "1.0.0",
+	"name": "DUM-SDK game test",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": ["ru.dum.sdk.fabric.SdkGameTest"]
+	},
+	"depends": {
+		"dum-sdk": "*"
+	}
+}

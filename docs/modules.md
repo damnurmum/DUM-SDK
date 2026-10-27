@@ -126,3 +126,4 @@ Any Fabric mod jar can be published the same way: a jar with `fabric.mod.json` a
 - `-Psodium`, `-Piris` add Sodium and Iris; shader packs go into `dum-fabric/run/shaderpacks`.
 - `dum-test-module` (`sdktest`) exercises rendering, events, packets and failures; `dum-cold-test` exercises cold load.
 - `/sdk` in game: modules, time they take, Fabric mods from the server, pending restarts, failures.
+- `./gradlew :dum-fabric:runClientGameTest` joins a running test server and checks the SDK end to end; a module's own checks can follow the same pattern (`dum-fabric/src/gametest`).

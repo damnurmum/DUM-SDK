@@ -7,6 +7,7 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 
 - [ ] `./gradlew build` works on Windows (with `dumCorePath` in `%USERPROFILE%\.gradle\gradle.properties`).
 - [ ] `./gradlew :dum-fabric:runClient -Pjoin=localhost` joins a local server with DUM-SDK.
+- [ ] `./gradlew test` and `./gradlew :dum-fabric:runClientGameTest` pass on Windows (test server with `info` and `sdktest`, no cold-load mods).
 - [ ] Cold load, first install: join, get the restart message, close the game, check that `mods\dum-cold-<id>.jar` appears and `dum-sdk\cold-apply.log` says `done`.
 - [ ] Cold load, update: publish a newer version, join, restart, check the new version runs (the `dumcoldtest` title mark shows it).
 - [ ] Cold load, removal: take the mod off the server, join, restart, check the jar is gone from `mods\`.
