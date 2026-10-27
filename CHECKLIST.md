@@ -14,6 +14,7 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 - [x] Closing the game with the launcher's Kill button instead of the normal way: does the helper still apply the plan? If not, the next join asks for one more restart (acceptable, but good to know). Yes: MultiMC's Kill leaves the helper alone and it applies the plan (2026-10-27).
 - [ ] A user folder with Cyrillic letters or spaces in the path: modules, cache and cold load still work.
 - [x] Safe mode: kill the game while modules run, start it again, the pause menu shows the safe mode status. Checked by the author 2026-10-27 (MultiMC Kill).
+- [ ] Safe mode and joining (0.12.6): in safe mode the server refuses the join with "Перезапусти игру"; after one more restart the join works and the modules run.
 
 ## Release signing key
 

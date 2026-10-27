@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Stream;
@@ -188,6 +189,12 @@ public final class ModuleInstaller {
             return;
         }
         installed.apply(jars).whenComplete((result, error) -> {
+            Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+            if (cause instanceof ModuleStartException refused) {
+                LOG.warn("Modules not started: {}", refused.getMessage());
+                send.accept(new Message.Ready(refused.getMessage()));
+                return;
+            }
             if (error != null) LOG.error("Cannot start modules", error);
             send.accept(new Message.Ready(error == null ? "" : "не удалось загрузить ресурсы модулей"));
         });

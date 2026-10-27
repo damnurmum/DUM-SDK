@@ -122,9 +122,14 @@ public final class ModuleManager {
      * Completes when the resources are loaded.
      */
     public CompletableFuture<Void> start(List<Path> jars) {
-        if (safeMode || !running.isEmpty()) return CompletableFuture.completedFuture(null);
+        if (!running.isEmpty()) return CompletableFuture.completedFuture(null);
         List<Candidate> order = resolve(scan(jars));
         if (order.isEmpty()) return CompletableFuture.completedFuture(null);
+        // Playing without the server's modules would be playing by other rules: no join until the game restarts
+        if (safeMode) {
+            return CompletableFuture.failedFuture(new ModuleStartException(
+                    "Игра в прошлый раз закрылась с ошибкой, и модули выключены до перезапуска. Перезапусти игру"));
+        }
         try {
             Files.writeString(activeMarker, String.join("\n", order.stream().map(c -> c.manifest.id()).toList()));
         } catch (IOException e) {
