@@ -16,8 +16,8 @@ import java.util.HexFormat;
  */
 public final class Signing {
 
-    /** The author's key, generated on the PC. Empty until then: no module passes outside development. */
-    private static final String RELEASE_KEY = "";
+    /** The author's key, generated on the PC (the private half is only there, in ~/.dum/signing.key). */
+    private static final String RELEASE_KEY = "MCowBQYDK2VwAyEAFVj14rQPqVSmXm7AXrSOYuz86u9OrFvdqHCCne2FCEI=";
 
     /** A test key from the laptop. Accepted only in a development environment (Loom runClient). */
     private static final String DEV_KEY = "MCowBQYDK2VwAyEAn14ozgWDOdkBpWfFikAhlGZag4a/YwhpXpxvDnr0tZQ=";

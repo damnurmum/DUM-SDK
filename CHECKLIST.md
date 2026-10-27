@@ -5,9 +5,9 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 
 ## Windows PC
 
-- [ ] `./gradlew build` works on Windows (with `dumCorePath` in `%USERPROFILE%\.gradle\gradle.properties`).
+- [x] `./gradlew build` works on Windows (with `dumCorePath` in `%USERPROFILE%\.gradle\gradle.properties`). Checked 2026-10-27, `dum-paper` included.
 - [ ] `./gradlew :dum-fabric:runClient -Pjoin=localhost` joins a local server with DUM-SDK.
-- [ ] `./gradlew test` and `./gradlew :dum-fabric:runClientGameTest` pass on Windows (test server with `info` and `sdktest`, no cold-load mods).
+- [x] `./gradlew test` and `./gradlew :dum-fabric:runClientGameTest` pass on Windows (test server with `info` and `sdktest`, no cold-load mods). Checked 2026-10-27 against the local server (its whitelist has to let `Player0` in).
 - [ ] Cold load, first install: join, get the restart message, close the game, check that `mods\dum-cold-<id>.jar` appears and `dum-sdk\cold-apply.log` says `done`.
 - [ ] Cold load, update: publish a newer version, join, restart, check the new version runs (the `dumcoldtest` title mark shows it).
 - [ ] Cold load, removal: take the mod off the server, join, restart, check the jar is gone from `mods\`.
@@ -17,8 +17,9 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 
 ## Release signing key
 
-- [ ] On the PC, once: `./gradlew generateSigningKey`; keep a copy of `~/.dum/signing.key` somewhere safe.
-- [ ] Put the printed public key into `Signing.RELEASE_KEY` (dum-network), bump the version, rebuild the mod and the plugin.
+- [x] On the PC, once: `./gradlew generateSigningKey` (done 2026-10-27).
+- [ ] Keep a copy of `~/.dum/signing.key` somewhere safe (the author does this).
+- [x] Put the printed public key into `Signing.RELEASE_KEY` (dum-network), bump the version, rebuild the mod and the plugin (0.12.0).
 - [ ] A release-signed module is accepted by a client started with `-Prelease`.
 - [ ] A dev-signed module is refused by a client started with `-Prelease` ("подпись не подходит").
 - [ ] `./gradlew :dum-fabric:releaseSdk` publishes the first release with the key (needs `gh auth login` on the PC).

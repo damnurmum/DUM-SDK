@@ -1,3 +1,0 @@
-[11:18:12] [Test worker/WARN]: Skipping module needs-ghost: needs module ghost
-[11:18:12] [Test worker/WARN]: Skipping module needs-needs-ghost: needs module needs-ghost
-[11:18:12] [Test worker/WARN]: Skipping module too-new: needs alone >=2.0.0, installed 1.0.0
