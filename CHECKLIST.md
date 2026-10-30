@@ -59,7 +59,7 @@ Historical checks used local SDK build labels from 0.14.x through 0.17.0 before 
 - [x] `release.yml` passes actionlint and all its shell scripts pass `bash -n`. Local preflight checks cover manual/tag runs, tag mismatch, mismatched tag commit, an existing release, missing/blank notes, invalid versions and GitHub API failure. Checked on 2026-10-30 without publishing.
 - [x] `./gradlew --no-daemon prepareRelease` builds/tests all projects and prepares client, signature, standalone Paper jar and SHA-256 sums. Signing via `DUM_SIGNING_KEY` succeeds; the globally configured dev key is refused. Independent OpenSSL verification and checksum checks pass; neither jar contains private key bytes. Checked on 2026-10-30.
 - [x] Repository Actions secret `DUM_SIGNING_KEY` is configured; the private value is not stored in source or release artifacts. Checked on 2026-10-30.
-- [ ] Push the workflow and run the first real Actions release when the author requests a new release version. Publication itself has not been exercised by this workflow yet; the existing v0.14.0 release remains unchanged.
+- [x] First real [Release workflow](https://github.com/damnurmum/DUM-SDK/actions/runs/41116835996) passed for tag `v0.14.1` on 2026-10-30. Ubuntu built/tested all projects, used the Actions secret to sign the client, and published four assets with the versioned description. Downloaded release checksums, GitHub asset digests and Ed25519 signature were independently verified; both jars report 0.14.1, and Paper metadata/classes contain no Core dependency/references. The ordinary Build workflow also passed.
 
 ## Release signing key
 
