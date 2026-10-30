@@ -29,6 +29,10 @@ public final class ConnectionSession {
         return true;
     }
 
+    public synchronized boolean negotiated(Object owner) {
+        return this.owner == owner && welcomed;
+    }
+
     public synchronized boolean downloading(Object owner) {
         return this.owner == owner && catalog && !installed;
     }

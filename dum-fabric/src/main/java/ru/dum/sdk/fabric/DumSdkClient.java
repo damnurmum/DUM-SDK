@@ -31,6 +31,8 @@ import ru.dum.sdk.fabric.module.ModuleManager;
 import ru.dum.sdk.fabric.module.ConnectionSession;
 import ru.dum.sdk.fabric.update.SdkUpdater;
 import ru.dum.sdk.network.Message;
+import ru.dum.sdk.network.ProtocolException;
+import ru.dum.sdk.network.ErrorCode;
 import ru.dum.sdk.network.Protocol;
 
 import java.nio.file.Path;
@@ -216,7 +218,13 @@ public final class DumSdkClient implements ClientModInitializer {
         try {
             message = Protocol.decode(payload.data());
         } catch (IllegalArgumentException e) {
-            LOG.warn("Ignoring a malformed message from the server", e);
+            LOG.warn("Malformed message from the server", e);
+            if (configuration && SESSION.negotiated(owner)) {
+                current.installer.reject(e instanceof ProtocolException invalid ? invalid
+                        : new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", e.getMessage()));
+            } else {
+                owner.get(PacketContext.CONNECTION).disconnect(Component.literal("Некорректное сообщение DUM-SDK. Код: MALFORMED_MESSAGE"));
+            }
             return;
         }
         switch (message) {
@@ -231,7 +239,11 @@ public final class DumSdkClient implements ClientModInitializer {
             // Configuration phase, network thread
             case Message.Catalog catalog -> {
                 if (configuration && SESSION.catalog(owner)) current.installer.catalog(catalog.modules());
-                else LOG.warn("Ignoring a catalog outside the negotiated configuration session");
+                else if (configuration && SESSION.downloading(owner)) {
+                    current.installer.reject(new ProtocolException(ErrorCode.INVALID_CATALOG, "", "Duplicate catalog"));
+                } else {
+                    owner.get(PacketContext.CONNECTION).disconnect(Component.literal("Некорректное рукопожатие DUM-SDK. Код: INVALID_CATALOG"));
+                }
             }
             case Message.Chunk chunk -> {
                 if (configuration && SESSION.downloading(owner)) current.installer.chunk(chunk);

@@ -19,7 +19,10 @@ public final class Protocol {
     public static final String CHANNEL = "dum:sdk";
 
     /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
-    public static final int VERSION = 4;
+    public static final int VERSION = 5;
+
+    public static final int MAX_MODULE_COUNT = 1024;
+    public static final int MAX_ERROR_DETAIL = 1024;
 
     /** Jar bytes per {@link Message.Chunk}; a plugin message may carry up to 1 MiB. */
     public static final int CHUNK_SIZE = 512 * 1024;
@@ -57,6 +60,7 @@ public final class Protocol {
                     out.writeUTF(serverVersion);
                 }
                 case Message.Catalog(List<Message.ModuleInfo> modules) -> {
+                    TransferValidation.catalog(modules);
                     out.writeByte(CATALOG);
                     out.writeInt(modules.size());
                     for (Message.ModuleInfo module : modules) {
@@ -73,15 +77,19 @@ public final class Protocol {
                     writeFixed(out, sha256, SHA256);
                 }
                 case Message.Chunk(byte[] sha256, int offset, byte[] data) -> {
+                    TransferValidation.chunk(new Message.Chunk(sha256, offset, data));
                     // The data runs to the end of the message
                     out.writeByte(CHUNK);
                     writeFixed(out, sha256, SHA256);
                     out.writeInt(offset);
                     out.write(data);
                 }
-                case Message.Ready(String error) -> {
+                case Message.Ready ready -> {
+                    TransferValidation.ready(ready);
                     out.writeByte(READY);
-                    out.writeUTF(error);
+                    out.writeByte(ready.code().wireId());
+                    out.writeUTF(ready.module());
+                    out.writeUTF(ready.detail());
                 }
                 case Message.Restart(List<String> mods) -> {
                     out.writeByte(RESTART);
@@ -102,6 +110,14 @@ public final class Protocol {
         return bytes.toByteArray();
     }
 
+    /** Reads only the stable HELLO prefix, even when a different protocol changes the remaining fields. */
+    public static int helloProtocol(byte[] data) {
+        if (data.length < 5 || data[0] != HELLO) {
+            throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Missing HELLO prefix");
+        }
+        return java.nio.ByteBuffer.wrap(data, 1, 4).getInt();
+    }
+
     /** @throws IllegalArgumentException if the bytes are not exactly one valid message */
     public static Message decode(byte[] data) {
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
@@ -111,17 +127,26 @@ public final class Protocol {
                 case WELCOME -> new Message.Welcome(in.readInt(), in.readUTF());
                 case CATALOG -> {
                     int count = in.readInt();
-                    if (count < 0 || count > 1024) throw new IllegalArgumentException("Bad module count " + count);
+                    if (count < 0 || count > MAX_MODULE_COUNT) throw new ProtocolException(ErrorCode.INVALID_CATALOG, "", "Bad module count " + count);
                     List<Message.ModuleInfo> modules = new ArrayList<>(count);
                     for (int i = 0; i < count; i++) {
                         modules.add(new Message.ModuleInfo(in.readUTF(), in.readUTF(), readFixed(in, SHA256), in.readInt(),
-                                readFixed(in, SIGNATURE), in.readBoolean()));
+                                readFixed(in, SIGNATURE), readModFlag(in)));
                     }
+                    TransferValidation.catalog(modules);
                     yield new Message.Catalog(List.copyOf(modules));
                 }
                 case REQUEST -> new Message.Request(readFixed(in, SHA256));
-                case CHUNK -> new Message.Chunk(readFixed(in, SHA256), in.readInt(), in.readAllBytes());
-                case READY -> new Message.Ready(in.readUTF());
+                case CHUNK -> {
+                    var chunk = new Message.Chunk(readFixed(in, SHA256), in.readInt(), in.readAllBytes());
+                    TransferValidation.chunk(chunk);
+                    yield chunk;
+                }
+                case READY -> {
+                    var ready = new Message.Ready(ErrorCode.fromWire(in.readUnsignedByte()), in.readUTF(), in.readUTF());
+                    TransferValidation.ready(ready);
+                    yield ready;
+                }
                 case RESTART -> {
                     int count = in.readInt();
                     if (count < 0 || count > 1024) throw new IllegalArgumentException("Bad mod count " + count);
@@ -130,15 +155,21 @@ public final class Protocol {
                     yield new Message.Restart(List.copyOf(mods));
                 }
                 case MODULE -> new Message.Module(in.readUTF(), in.readAllBytes());
-                default -> throw new IllegalArgumentException("Unknown message type " + data[0]);
+                default -> throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Unknown message type " + data[0]);
             };
             if (in.available() > 0) {
-                throw new IllegalArgumentException(in.available() + " trailing bytes after " + message);
+                throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", in.available() + " trailing bytes after " + message.getClass().getSimpleName());
             }
             return message;
         } catch (IOException e) {
-            throw new IllegalArgumentException("Truncated message", e);
+            throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Truncated message");
         }
+    }
+
+    private static boolean readModFlag(DataInputStream in) throws IOException {
+        int flag = in.readUnsignedByte();
+        if (flag > 1) throw new ProtocolException(ErrorCode.INVALID_CATALOG, "", "Invalid Fabric mod flag");
+        return flag == 1;
     }
 
     private static void writeFixed(DataOutputStream out, byte[] bytes, int length) throws IOException {

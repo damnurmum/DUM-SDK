@@ -59,6 +59,7 @@ loom {
     runs.matching { it.name == "clientGameTest" }.configureEach {
         vmArg("-Ddumsdk.testServer=${findProperty("testServer") ?: "localhost"}")
         if (project.hasProperty("plainServer")) vmArg("-Ddumsdk.plainServer=${project.property("plainServer")}")
+        if (project.hasProperty("downloadTest")) vmArg("-Ddumsdk.downloadTest=true")
         if (project.hasProperty("standaloneTest")) vmArg("-Ddumsdk.standaloneTest=true")
         if (project.hasProperty("coldTest")) vmArg("-Ddumsdk.coldTest=true")
         if (project.hasProperty("coldInstallTest")) vmArg("-Ddumsdk.coldInstallTest=true")

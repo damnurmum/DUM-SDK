@@ -6,6 +6,8 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Signing;
+import ru.dum.sdk.network.TransferValidation;
+import ru.dum.sdk.network.ProtocolException;
 import ru.dum.sdk.network.ServerModContract;
 
 import java.io.ByteArrayInputStream;
@@ -91,6 +93,12 @@ final class ModuleCatalog {
             }
         } catch (IOException | RuntimeException e) {
             log.error("Cannot read client modules from {}", dir, e);
+        }
+        try {
+            TransferValidation.catalog(found.values().stream().map(Entry::info).toList());
+        } catch (ProtocolException e) {
+            log.error("Invalid module catalog [{}]: {}", e.code(), e.getMessage());
+            found.clear();
         }
         bySha = Map.copyOf(found);
         return found.size();

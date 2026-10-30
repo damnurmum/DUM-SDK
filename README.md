@@ -14,6 +14,8 @@ Work in progress. Done so far:
 - Session-scoped appearance hooks let hot modules select armor/wings rendering and define models and names for tagged vanilla items. Their effects require a successful SDK handshake, module installation and play join; they stop on disconnect and stay off on ordinary servers. This does not hot-load arbitrary mixins or add native registry types.
 - Client modules come from the server: signed jars in `plugins/DUM-SDK/modules` are sent to the client in the configuration phase, checked (SHA-256 and Ed25519 signature), cached in `.minecraft/dum-sdk/cache` and never taken back to an older version. They are loaded, each in its own class loader, while on the server and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode. A server with modules does not let a client in safe mode join (playing without them would be playing by other rules): the player is told to restart the game.
 
+SDK 0.14.2 includes protocol 5 download validation and structured error codes. Update both client and Paper together; SDK 0.14.1 uses protocol 4. Admission checks the protocol number, not equality of SDK release versions or the latest GitHub release. See [protocol details](docs/protocol.md).
+
 ## Layout
 
 | Project | What it is |
@@ -84,6 +86,7 @@ The workflow builds and tests all projects, signs the client with repository sec
 - `./gradlew test`: unit tests of the wire format, signatures, the event bridge, module dependencies and version order.
 - `./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port] [-PplainServer=host:port]`: an end-to-end client game test. Start a test server first (DUM-SDK, the separately built `info`, `sdktest` 0.4.0+ and `DUM-Runtime-Test` fixtures, no cold-load mods). It checks handshake, item/equipment presentation, optional module failure and cleanup. An optional second server without plugins checks that effects stay off after switching servers. Screenshots land in `dum-fabric/build/run/clientGameTest/screenshots`.
 - `./gradlew :dum-fabric:runClientGameTest -PstandaloneTest -PtestServer=localhost:25568`: checks a Paper server with only DUM-SDK and an empty published catalog. Give the test player `Player0` operator permission. It joins, runs `/dumsdk`, reloads twice and reconnects, exercising the standalone handshake and messages without external fixtures.
+- `./gradlew :dum-fabric:runClientGameTest -PdownloadTest -PtestServer=localhost:25568`: injects a duplicate catalog entry, wrong chunk offset, corrupted bytes, a bad signature, an unsolicited jar hash and a repeated request into actual client receives. Use a test server with signed hot module jars; it checks that Paper receives each error code and displays Russian text without admitting the client.
 - Cold mod lifecycle integration uses `-PcoldInstallTest` then `-PcoldTest`, with a persistent `-PgameDir` and the external `dumcoldtest` 0.4.0+ fixture. See [test setup and commands](docs/modules.md#development).
 
 ## Manual checks

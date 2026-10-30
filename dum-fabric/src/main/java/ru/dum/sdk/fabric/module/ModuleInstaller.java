@@ -7,6 +7,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.dum.sdk.fabric.cold.ColdMods;
 import ru.dum.sdk.network.Message;
+import ru.dum.sdk.network.ErrorCode;
+import ru.dum.sdk.network.ModuleDownload;
+import ru.dum.sdk.network.ProtocolException;
+import ru.dum.sdk.network.TransferValidation;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.network.Signing;
 
@@ -49,18 +53,9 @@ public final class ModuleInstaller {
     private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
 
     private List<Message.ModuleInfo> catalog = List.of();
-    private final Map<String, Download> downloads = new HashMap<>();
-
-    private static final class Download {
-        final Message.ModuleInfo info;
-        final byte[] data;
-        int received;
-
-        Download(Message.ModuleInfo info) {
-            this.info = info;
-            this.data = new byte[info.size()];
-        }
-    }
+    private final Map<String, ModuleDownload> downloads = new HashMap<>();
+    private enum State { NEW, DOWNLOADING, INSTALLING, COMPLETE, FAILED }
+    private volatile State state = State.NEW;
 
     /** Bytes of the current downloads; read by the progress bar on the render thread. */
     private volatile long total;
@@ -81,71 +76,86 @@ public final class ModuleInstaller {
     }
 
     public void catalog(List<Message.ModuleInfo> modules) {
-        if (!current.getAsBoolean()) return;
-        catalog = modules;
-        downloads.clear();
-        total = 0;
-        received = 0;
+        if (!current.getAsBoolean() || terminal()) return;
+        if (state != State.NEW) {
+            fail(ErrorCode.INVALID_CATALOG, "", "Catalog received more than once");
+            return;
+        }
+        try {
+            TransferValidation.catalog(modules);
+        } catch (ProtocolException e) {
+            reject(e);
+            return;
+        }
+        // Check every entry, including rollback, before allocating buffers or sending any request.
         Properties versions = loadVersions();
         for (Message.ModuleInfo module : modules) {
             String known = versions.getProperty(module.id());
             if (known != null && older(module.version(), known)) {
-                fail("модуль " + module.id() + ": сервер предлагает старую версию " + module.version() + ", уже была " + known);
+                fail(ErrorCode.VERSION_ROLLBACK, module.id(), "Offered " + module.version() + ", already installed " + known);
                 return;
-            }
-            if (module.size() <= 0 || module.size() > Protocol.MAX_MODULE_SIZE) {
-                fail("модуль " + module.id() + ": недопустимый размер " + module.size());
-                return;
-            }
-            if (!cached(module)) {
-                downloads.put(Signing.hex(module.sha256()), new Download(module));
-                total += module.size();
-                send.accept(new Message.Request(module.sha256()));
             }
         }
+        catalog = List.copyOf(modules);
+        for (Message.ModuleInfo module : catalog) {
+            if (!cached(module)) {
+                downloads.put(Signing.hex(module.sha256()), new ModuleDownload(module));
+                total += module.size();
+            }
+        }
+        state = State.DOWNLOADING;
         LOG.info("{} modules from the server, {} to download", modules.size(), downloads.size());
-        if (downloads.isEmpty()) finish();
+        if (downloads.isEmpty()) {
+            finish();
+            return;
+        }
+        for (ModuleDownload download : List.copyOf(downloads.values())) {
+            if (terminal() || !current.getAsBoolean()) return;
+            send.accept(new Message.Request(download.info().sha256()));
+        }
     }
 
     public void chunk(Message.Chunk chunk) {
-        if (!current.getAsBoolean()) return;
-        Download download = downloads.get(Signing.hex(chunk.sha256()));
-        if (download == null) return;
-        String id = download.info.id();
-        int length = chunk.data().length;
-        if (chunk.offset() < 0 || chunk.offset() > download.data.length - length) {
-            fail("модуль " + id + ": повреждённые данные при загрузке");
+        if (!current.getAsBoolean() || terminal()) return;
+        ModuleDownload download = downloads.get(Signing.hex(chunk.sha256()));
+        if (state != State.DOWNLOADING || download == null) {
+            fail(ErrorCode.UNEXPECTED_CHUNK, "", "Chunk was not requested or its download already completed");
             return;
         }
-        System.arraycopy(chunk.data(), 0, download.data, chunk.offset(), length);
-        // The server sends every piece once, in order
-        download.received += length;
-        received += length;
-        if (download.received < download.data.length) return;
-
-        downloads.remove(Signing.hex(chunk.sha256()));
-        if (!Arrays.equals(Signing.sha256(download.data), download.info.sha256())) {
-            fail("модуль " + id + ": файл повреждён при загрузке");
+        String id = download.info().id();
+        try {
+            download.accept(chunk);
+        } catch (ProtocolException e) {
+            reject(e);
             return;
         }
-        if (!Signing.verify(download.data, download.info.signature(), allowDevKey)) {
-            fail("модуль " + id + ": подпись не подходит, модуль не от DUM");
+        received += chunk.data().length;
+        if (!download.complete()) return;
+        if (!Signing.verify(download.data(), download.info().signature(), allowDevKey)) {
+            fail(ErrorCode.SIGNATURE_MISMATCH, id, "Jar is not signed with an accepted key");
             return;
         }
         try {
             Files.createDirectories(cache);
-            Files.write(jar(download.info), download.data);
+            Files.write(jar(download.info()), download.data());
         } catch (IOException e) {
             LOG.error("Cannot save module {}", id, e);
-            fail("модуль " + id + ": не удалось сохранить на диск");
+            fail(ErrorCode.CACHE_WRITE_FAILED, id, e.toString());
             return;
         }
-        LOG.info("Downloaded module {} {}", id, download.info.version());
+        downloads.remove(Signing.hex(chunk.sha256()));
+        LOG.info("Downloaded module {} {}", id, download.info().version());
         if (downloads.isEmpty()) finish();
     }
 
+    /** Malformed packets must stop installation instead of waiting for a timeout or later claiming success. */
+    public void reject(ProtocolException error) {
+        fail(error.code(), error.module(), error.getMessage());
+    }
+
     private void finish() {
-        if (!current.getAsBoolean()) return;
+        if (!current.getAsBoolean() || state != State.DOWNLOADING) return;
+        state = State.INSTALLING;
         List<Path> jars = new ArrayList<>();
         List<ColdMods.Mod> fabricMods = new ArrayList<>();
         Properties versions = loadVersions();
@@ -160,11 +170,11 @@ public final class ModuleInstaller {
             try {
                 ModuleManifest manifest = ModuleManifest.read(jar);
                 if (!manifest.id().equals(module.id()) || !manifest.version().equals(module.version())) {
-                    fail("модуль " + module.id() + ": в файле другой модуль (" + manifest.id() + " " + manifest.version() + ")");
+                    fail(ErrorCode.INVALID_MODULE, module.id(), "Manifest ID/version does not match the catalog");
                     return;
                 }
             } catch (IOException e) {
-                fail("модуль " + module.id() + ": " + e.getMessage());
+                fail(ErrorCode.INVALID_MODULE, module.id(), e.toString());
                 return;
             }
             jars.add(jar);
@@ -176,37 +186,57 @@ public final class ModuleInstaller {
         List<String> restart;
         try {
             restart = coldMods.sync(fabricMods, current);
-        } catch (IllegalStateException e) {
-            fail(e.getMessage());
+        } catch (RuntimeException e) {
+            fail(ErrorCode.COLD_MOD_REJECTED, "", e.getMessage());
             return;
         } catch (IOException e) {
             LOG.error("Cannot prepare Fabric mods", e);
-            fail("не удалось подготовить моды: " + e.getMessage());
+            fail(ErrorCode.COLD_MOD_IO, "", e.toString());
             return;
         }
         if (!current.getAsBoolean()) return;
-        // Only now is everything installed; a failed attempt must not raise the bar for older versions
+        if (!restart.isEmpty()) {
+            saveVersions(versions);
+            state = State.COMPLETE;
+            send.accept(new Message.Restart(restart));
+            return;
+        }
+        CompletableFuture<?> installation;
+        try {
+            installation = installed.apply(jars, fabricMods);
+        } catch (RuntimeException e) {
+            fail(ErrorCode.MODULE_START_FAILED, "", e.toString());
+            return;
+        }
+        installation.whenCompleteAsync((result, error) -> {
+            if (!current.getAsBoolean() || state != State.INSTALLING) return;
+            Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
+            if (cause instanceof ModuleStartException refused) {
+                fail(ErrorCode.MODULE_START_FAILED, "", refused.getMessage());
+                return;
+            }
+            if (error != null) {
+                LOG.error("Cannot start modules", error);
+                fail(ErrorCode.RESOURCE_RELOAD_FAILED, "", error.toString());
+                return;
+            }
+            complete(versions);
+        });
+    }
+
+    private synchronized void complete(Properties versions) {
+        if (!current.getAsBoolean() || state != State.INSTALLING) return;
+        saveVersions(versions);
+        state = State.COMPLETE;
+        send.accept(Message.Ready.success());
+    }
+
+    private void saveVersions(Properties versions) {
         try (Writer writer = Files.newBufferedWriter(versionsFile)) {
             versions.store(writer, "Highest installed version of every DUM-SDK module");
         } catch (IOException e) {
             LOG.warn("Cannot save {}", versionsFile, e);
         }
-        if (!restart.isEmpty()) {
-            // The server disconnects us; the mods change when the game exits
-            send.accept(new Message.Restart(restart));
-            return;
-        }
-        installed.apply(jars, fabricMods).whenComplete((result, error) -> {
-            if (!current.getAsBoolean()) return;
-            Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
-            if (cause instanceof ModuleStartException refused) {
-                LOG.warn("Modules not started: {}", refused.getMessage());
-                send.accept(new Message.Ready(refused.getMessage()));
-                return;
-            }
-            if (error != null) LOG.error("Cannot start modules", error);
-            send.accept(new Message.Ready(error == null ? "" : "не удалось загрузить ресурсы модулей"));
-        });
     }
 
     /** Cached jars of older versions and of modules the server no longer has. A file still in use stays until next time. */
@@ -241,11 +271,20 @@ public final class ModuleInstaller {
         return String.format("%.1f из %.1f МБ", received / 1048576.0, total / 1048576.0);
     }
 
-    private void fail(String reason) {
-        LOG.warn("Cannot install modules: {}", reason);
+    private boolean terminal() {
+        return state == State.COMPLETE || state == State.FAILED;
+    }
+
+    private synchronized void fail(ErrorCode code, String module, String detail) {
+        if (terminal() || !current.getAsBoolean()) return;
+        state = State.FAILED;
+        LOG.warn("Cannot install modules [{}] {}: {}", code, module, detail);
         downloads.clear();
         total = 0;
-        send.accept(new Message.Ready(reason));
+        if (!TransferValidation.moduleId(module)) module = "";
+        detail = detail == null ? "" : detail;
+        if (detail.length() > Protocol.MAX_ERROR_DETAIL) detail = detail.substring(0, Protocol.MAX_ERROR_DETAIL);
+        send.accept(new Message.Ready(code, module, detail));
     }
 
     private Path jar(Message.ModuleInfo module) {
@@ -257,6 +296,7 @@ public final class ModuleInstaller {
         Path jar = jar(module);
         if (!Files.isRegularFile(jar)) return false;
         try {
+            if (Files.size(jar) != module.size()) return false;
             byte[] data = Files.readAllBytes(jar);
             return Arrays.equals(Signing.sha256(data), module.sha256()) && Signing.verify(data, module.signature(), allowDevKey);
         } catch (IOException e) {

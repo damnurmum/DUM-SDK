@@ -61,6 +61,14 @@ Historical checks used local SDK build labels from 0.14.x through 0.17.0 before 
 - [x] Repository Actions secret `DUM_SIGNING_KEY` is configured; the private value is not stored in source or release artifacts. Checked on 2026-10-30.
 - [x] First real [Release workflow](https://github.com/damnurmum/DUM-SDK/actions/runs/41116835996) passed for tag `v0.14.1` on 2026-10-30. Ubuntu built/tested all projects, used the Actions secret to sign the client, and published four assets with the versioned description. Downloaded release checksums, GitHub asset digests and Ed25519 signature were independently verified; both jars report 0.14.1, and Paper metadata/classes contain no Core dependency/references. The ordinary Build workflow also passed.
 
+## Download validation and coded errors (0.14.2, protocol 5)
+
+- [x] `./gradlew build :dum-fabric:compileGametestJava` passes on macOS (34 unit tests). Catalog validation, contiguous chunks, repeats/gaps/overflow, final hashes, explicit error wire IDs, malformed results, stable HELLO prefixes and Russian message fallback/escaping are covered. Checked on 2026-10-30.
+- [x] `./gradlew :dum-fabric:runClientGameTest -PdownloadTest -PtestServer=localhost:25568` passes against real standalone Paper with signed hot fixture jars. Duplicate catalog entries, wrong offsets, corrupted data, bad signatures, unsolicited hashes and a repeated request are rejected. Paper displays the expected Russian error and code; the client never enters play or activates modules. Checked on 2026-10-30 through the actual codec/transport on both sides.
+- [x] The ordinary client game test passes against the same protocol 5 Paper server: valid module downloads/startup, item/equipment APIs, optional module failure, cleanup and reconnect remain functional. Checked on 2026-10-30.
+- [ ] Repeat protocol 5 client integration checks on Windows/Linux and the players' real instances. SDK 0.14.2 uses protocol 5; SDK 0.14.1 uses protocol 4.
+- [ ] Exercise a genuinely older-protocol installed client and automatic update/restart to a future published protocol 5 release. Existing self-update checklist item remains unverified by these tests.
+
 ## Release signing key
 
 - [x] On the PC, once: `./gradlew generateSigningKey` (done 2026-10-27).

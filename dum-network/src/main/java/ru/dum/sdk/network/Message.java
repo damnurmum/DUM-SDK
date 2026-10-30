@@ -35,8 +35,9 @@ public sealed interface Message {
     record Chunk(byte[] sha256, int offset, byte[] data) implements Message {
     }
 
-    /** Client to server: every module is in place (error is empty), or why it is not. Ends the configuration phase. */
-    record Ready(String error) implements Message {
+    /** Client to server: OK after installation, or a stable error code plus diagnostic context. */
+    record Ready(ErrorCode code, String module, String detail) implements Message {
+        public static Ready success() { return new Ready(ErrorCode.OK, "", ""); }
     }
 
     /** Client to server, instead of {@link Ready}: these Fabric mods change when the game restarts. */

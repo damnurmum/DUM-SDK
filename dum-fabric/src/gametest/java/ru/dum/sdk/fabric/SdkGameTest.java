@@ -37,6 +37,10 @@ public final class SdkGameTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        if (Boolean.getBoolean("dumsdk.downloadTest")) {
+            DownloadValidationGameTest.run(context);
+            return;
+        }
         if (Boolean.getBoolean("dumsdk.standaloneTest")) {
             StandalonePaperGameTest.run(context);
             return;

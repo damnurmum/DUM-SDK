@@ -14,8 +14,10 @@ handshake:
   outdated-client: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> устарел.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>.<newline><gray>Перезапусти игру: мод обновится сам. Если не помогло, скачай новый: <white>github.com/damnurmum/DUM-SDK/releases"
   # The client's protocol is newer than the server's
   outdated-server: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> новее, чем на сервере.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>. Сервер скоро обновится, напиши DUM."
-  # The client could not install the server's modules. <reason> comes from the client
+  # The client could not install modules. <reason> is selected by its stable error code.
   install-failed: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Не удалось установить модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>.<newline><gray><reason>"
+  error-module: "<newline><gray>Модуль: <white><module>"
+  error-code: "<newline><dark_gray>Код: <code>"
   # The client did not finish downloading modules in time
   install-timeout: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> загружались слишком долго.<newline><gray>Попробуй зайти ещё раз."
   # Fabric mods from the server are added, updated or removed when the game restarts (cold load). <mods>: their ids
@@ -24,3 +26,23 @@ handshake:
 limits:
   # A client sent the server side of a module far more messages than any normal play does. <module>: its id
   flood: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модуль <gradient:#ffb347:#ffcc33><module></gradient> прислал серверу слишком много сообщений.<newline><gray>Зайди снова. Если повторится, напиши DUM."
+
+# Stable installation error codes. Client-provided technical details are logged separately.
+install-errors:
+  invalid-catalog: "Сервер прислал некорректный список модулей. Сообщи администратору."
+  version-rollback: "Сервер предлагает более старую версию модуля. Сообщи администратору."
+  unexpected-chunk: "Пришли данные файла, который клиент не запрашивал. Попробуй зайти снова."
+  invalid-chunk: "Нарушен порядок или размер частей файла. Попробуй зайти снова."
+  hash-mismatch: "Файл повреждён при загрузке. Попробуй зайти снова."
+  signature-mismatch: "Подпись не подходит: файл не подтверждён ключом DUM. Сообщи администратору."
+  cache-write-failed: "Не удалось сохранить модуль. Проверь свободное место и права на папку игры."
+  invalid-module: "Содержимое модуля не соответствует списку сервера. Сообщи администратору."
+  cold-mod-rejected: "Мод нельзя установить: проверь зависимости и конфликтующие моды. Подробнее в логе игры."
+  cold-mod-io: "Не удалось подготовить моды к перезапуску. Проверь права на папку игры."
+  module-start-failed: "Обязательные модули не запустились. Перезапусти игру. Подробнее в логе игры."
+  resource-reload-failed: "Не удалось загрузить ресурсы модулей. Перезапусти игру. Подробнее в логе игры."
+  malformed-message: "Получено некорректное сообщение DUM-SDK. Попробуй зайти снова."
+  unexpected-request: "Клиент повторил запрос файла или запросил лишний файл. Попробуй зайти снова."
+  unsupported-protocol: "Версия протокола клиента и сервера не совпадает. Обнови SDK."
+  hello-timeout: "Клиент не выполнил рукопожатие DUM-SDK вовремя."
+  install-timeout: "Клиент не завершил установку модулей вовремя."

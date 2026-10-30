@@ -36,9 +36,11 @@ class ProtocolTest {
         sha[0] = 7;
         byte[] signature = new byte[64];
         signature[63] = 9;
+        byte[] coldSha = sha.clone();
+        coldSha[1] = 1;
         Message.Catalog catalog = (Message.Catalog) Protocol.decode(Protocol.encode(new Message.Catalog(java.util.List.of(
                 new Message.ModuleInfo("info", "0.2.0", sha, 1234, signature, false),
-                new Message.ModuleInfo("coldtest", "1.0.0", sha, 5, signature, true)))));
+                new Message.ModuleInfo("coldtest", "1.0.0", coldSha, 5, signature, true)))));
         Message.ModuleInfo info = catalog.modules().getFirst();
         assertEquals("info", info.id());
         assertEquals("0.2.0", info.version());
@@ -58,8 +60,12 @@ class ProtocolTest {
         assertArrayEquals(data, chunk.data());
         // A full chunk must fit into one plugin message
         assertTrue(Protocol.encode(new Message.Chunk(sha, 0, data)).length <= 1024 * 1024);
-        assertEquals(new Message.Ready("модуль info: подпись не подходит"),
-                Protocol.decode(Protocol.encode(new Message.Ready("модуль info: подпись не подходит"))));
+        assertEquals(Message.Ready.success(), Protocol.decode(Protocol.encode(Message.Ready.success())));
+        for (ErrorCode code : ErrorCode.values()) {
+            if (code == ErrorCode.OK) continue;
+            var failed = new Message.Ready(code, "info", "diagnostic details");
+            assertEquals(failed, Protocol.decode(Protocol.encode(failed)));
+        }
         assertThrows(IllegalArgumentException.class, () -> Protocol.encode(new Message.Request(new byte[31])));
     }
 
@@ -68,6 +74,9 @@ class ProtocolTest {
         // Type byte, then the protocol as a big-endian int: older and newer servers rely on this layout
         byte[] data = Protocol.encode(new Message.Hello(0x01020304, "x"));
         assertArrayEquals(new byte[]{0, 1, 2, 3, 4}, java.util.Arrays.copyOf(data, 5));
+        assertEquals(0x01020304, Protocol.helloProtocol(java.util.Arrays.copyOf(data, 5)));
+        assertThrows(ProtocolException.class, () -> Protocol.helloProtocol(new byte[]{42, 1, 2, 3, 4}));
+        assertThrows(ProtocolException.class, () -> Protocol.helloProtocol(new byte[4]));
     }
 
     @Test

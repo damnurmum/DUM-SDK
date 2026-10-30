@@ -24,7 +24,9 @@ class ConnectionSessionTest {
         var session = new ConnectionSession();
         Object sdk = new Object();
         long ticket = session.begin(sdk);
+        assertFalse(session.negotiated(sdk));
         assertTrue(session.welcome(sdk, true));
+        assertTrue(session.negotiated(sdk));
         assertFalse(session.welcome(sdk, true));
         assertTrue(session.catalog(sdk));
         assertFalse(session.catalog(sdk));
@@ -34,6 +36,7 @@ class ConnectionSessionTest {
         assertTrue(session.active());
         session.close();
         assertFalse(session.active());
+        assertFalse(session.negotiated(sdk));
     }
 
     @Test
