@@ -3,7 +3,9 @@
 core:
   # /dumsdk. <modules>: the client modules this server hands out
   info: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <gradient:#ffe29f:#ffc078>Версия <white><version></white>, протокол <white><protocol></white>, модули: <white><modules>"
-  reloaded: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <gradient:#ffe29f:#ffc078>Перезагружен, модулей: <white><count></white>. Игроки на сервере получат их после перезахода."
+  published: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <gradient:#ffe29f:#ffc078>Модули обновлены, всего: <white><count></white>. Игроки отключены для обновления."
+  publish-failed: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <red>Не удалось обновить модули. Подробности в консоли."
+  reconnect: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> обновлены.<newline><gray>Зайди на сервер снова. Если игра попросит, перезапусти её."
 
 handshake:
   # The client did not say HELLO: no DUM-SDK mod installed

@@ -17,12 +17,17 @@ class ModuleAccessTest {
     @Test
     void onlyGrantedModules() {
         ModuleAccess access = new ModuleAccess();
-        assertFalse(access.has(player, "info"));
-        access.grant(player, List.of("info"));
-        assertTrue(access.has(player, "info"));
-        assertFalse(access.has(player, "admin"));
+        assertFalse(access.current(player, 1));
+        assertFalse(access.has(player, "info", 1));
+        access.grant(player, List.of("info"), 1);
+        assertTrue(access.current(player, 1));
+        assertTrue(access.has(player, "info", 1));
+        assertFalse(access.has(player, "admin", 1));
+        assertFalse(access.current(player, 2));
+        assertFalse(access.has(player, "info", 2));
         access.forget(player);
-        assertFalse(access.has(player, "info"));
+        assertFalse(access.current(player, 1));
+        assertFalse(access.has(player, "info", 1));
     }
 
     @Test

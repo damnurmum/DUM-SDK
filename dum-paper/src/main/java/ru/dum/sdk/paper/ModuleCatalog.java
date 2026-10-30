@@ -23,7 +23,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * The client modules this server hands out: plugins/DUM-SDK/modules, a jar and its .jar.sig each
+ * The client modules this server hands out: a published snapshot of staged jars and their .jar.sig files
  * (./gradlew deploy in the module's project). A jar with fabric.mod.json and no dum-module.json is a whole
  * Fabric mod, installed into the client's mods/ and active after a restart (cold load). Clients check the signatures themselves; checking here
  * only catches mistakes early.
@@ -35,6 +35,10 @@ final class ModuleCatalog {
 
     // ponytail: every jar is kept in memory; fine for a few MB, stream from disk if modules grow large
     private volatile Map<String, Entry> bySha = Map.of();
+
+    void replaceWith(ModuleCatalog other) {
+        bySha = other.bySha;
+    }
 
     /** Reads the folder; I/O on the calling thread. Returns how many modules are offered. */
     int load(Path dir, Logger log) {

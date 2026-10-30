@@ -132,7 +132,7 @@ The server itself should not leak either: Paper's anti-xray hides ores the playe
 
 1. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules`, and `dumSigningKey=<file>` if the key is not `~/.dum/signing.key`.
 2. `./gradlew :<project>:deploy` signs the jar and copies it with its `.sig` there.
-3. `/dumsdk reload` on the server. Players get the module on their next join; it is downloaded once and cached.
+3. `/dumsdk reload` on the server publishes the staged jars and disconnects online players with a message to rejoin. Rejoining players download changed modules once and then use the cache. A whole Fabric mod still needs a game restart after the rejoin. Until publication, even a Paper restart keeps using the last published catalog. On the first startup after upgrading, the existing `modules` folder becomes the initial published catalog. If a staged jar is invalid, publication fails and the old catalog stays active.
 
 ## Fabric mods (cold load)
 

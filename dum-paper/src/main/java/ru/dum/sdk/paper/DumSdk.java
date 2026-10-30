@@ -9,6 +9,7 @@ import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.plugin.Plugin;
@@ -23,6 +24,7 @@ import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.paper.api.DumSdkApi;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -43,6 +45,9 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     private ModuleManager<DumSdk> modules;
     private final ModuleCatalog catalog = new ModuleCatalog();
     private final ModuleAccess access = new ModuleAccess();
+    private ModulePublication publication;
+    private volatile long catalogEpoch;
+    private volatile boolean reloadInProgress;
 
     @Override
     public void onEnable() {
@@ -57,7 +62,14 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         getServer().getServicesManager().register(DumSdkApi.class, this, this, ServicePriority.Normal);
         getServer().getPluginManager().registerEvents(this, this);
 
-        catalog.load(getDataPath().resolve("modules"), getSLF4JLogger());
+        publication = new ModulePublication(getDataPath());
+        try {
+            publication.load(catalog, getSLF4JLogger());
+        } catch (IOException e) {
+            getSLF4JLogger().error("Cannot load published modules", e);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
         modules = new ModuleManager<>(this, List.of(new HandshakeModule(this), new AccessoriesModule(this)));
         modules.enableAll();
 
@@ -71,12 +83,27 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
                     return Command.SINGLE_SUCCESS;
                 })
                 .then(Commands.literal("reload").executes(ctx -> {
-                    // Players already on the server keep their modules until they rejoin
-                    reloadConfig();
-                    messages.load();
-                    int count = catalog.load(getDataPath().resolve("modules"), getSLF4JLogger());
-                    modules.reload();
-                    ctx.getSource().getSender().sendMessage(messages.get("core.reloaded", Placeholder.unparsed("count", String.valueOf(count))));
+                    reloadInProgress = true;
+                    boolean published = false;
+                    try {
+                        int count = publication.publish(catalog, getSLF4JLogger());
+                        catalogEpoch++;
+                        published = true;
+                        reloadConfig();
+                        messages.load();
+                        modules.reload();
+                        ctx.getSource().getSender().sendMessage(messages.get("core.published", Placeholder.unparsed("count", String.valueOf(count))));
+                    } catch (IOException e) {
+                        getSLF4JLogger().error("Cannot publish staged modules", e);
+                        ctx.getSource().getSender().sendMessage(messages.get("core.publish-failed"));
+                    } finally {
+                        if (published) {
+                            for (Player player : List.copyOf(getServer().getOnlinePlayers())) {
+                                player.kick(messages.get("core.reconnect"));
+                            }
+                        }
+                        reloadInProgress = false;
+                    }
                     return Command.SINGLE_SUCCESS;
                 }))
                 .build(), "Управление DUM-SDK", List.of()));
@@ -96,9 +123,21 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         return catalog;
     }
 
+    long catalogEpoch() {
+        return catalogEpoch;
+    }
+
+    boolean reloadInProgress() {
+        return reloadInProgress;
+    }
+
     /** Configuration phase: only the handshake. Paper calls this for the play phase too, then the Player variant. */
     @Override
     public void onPluginMessageReceived(String channel, PlayerConnection connection, byte[] message) {
+        if (reloadInProgress && connection instanceof PlayerConfigurationConnection) {
+            connection.disconnect(messages.get("core.reconnect"));
+            return;
+        }
         if (connection instanceof PlayerConfigurationConnection configuration && modules.isEnabled("handshake")) {
             modules.get(HandshakeModule.class).received(configuration, message);
         }
@@ -119,7 +158,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
         }
         if (!(decoded instanceof Message.Module(String module, byte[] data))) return;
         Handler handler = moduleHandlers.get(module);
-        if (handler == null || !access.has(player.getUniqueId(), module)) return;
+        if (handler == null || !access.has(player.getUniqueId(), module, catalogEpoch)) return;
         var limits = getConfig();
         switch (access.take(player.getUniqueId(), module, limits.getDouble("module-messages.per-second", 20),
                 limits.getInt("module-messages.burst", 40), limits.getInt("module-messages.disconnect-after", 100), System.nanoTime())) {
@@ -143,6 +182,13 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     }
 
     @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        if (!access.current(event.getPlayer().getUniqueId(), catalogEpoch)) {
+            event.getPlayer().kick(messages.get("core.reconnect"));
+        }
+    }
+
+    @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         access.forget(event.getPlayer().getUniqueId());
     }
@@ -158,7 +204,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
 
     @Override
     public boolean hasModule(Player player, String module) {
-        return access.has(player.getUniqueId(), module);
+        return access.has(player.getUniqueId(), module, catalogEpoch);
     }
 
     @Override
@@ -179,7 +225,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     @Override
     public void sendToModule(Player player, String module, byte[] data) {
         // Nothing goes to a player who was not given the module: an ops-only module's data stays with operators
-        if (!access.has(player.getUniqueId(), module)) return;
+        if (!access.has(player.getUniqueId(), module, catalogEpoch)) return;
         player.sendPluginMessage(this, Protocol.CHANNEL, Protocol.encode(new Message.Module(module, data)));
     }
 }

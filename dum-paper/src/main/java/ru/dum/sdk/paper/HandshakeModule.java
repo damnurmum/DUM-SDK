@@ -49,8 +49,9 @@ final class HandshakeModule extends Module<DumSdk> {
 
     @Override
     protected void onDisable() {
-        // Players waiting right now are let in: the check is off
-        pending.values().forEach(p -> {
+        // A connection offered the old catalog must not enter after a reload.
+        pending.forEach((connection, p) -> {
+            connection.disconnect(messages().get("core.reconnect"));
             p.hello.cancel(false);
             p.ready.cancel(false);
         });
@@ -101,18 +102,24 @@ final class HandshakeModule extends Module<DumSdk> {
     public void onConfigure(AsyncPlayerConnectionConfigureEvent event) {
         PlayerConfigurationConnection connection = event.getConnection();
         String name = connection.getProfile().getName();
+        long epoch = plugin.catalogEpoch();
+        if (!current(connection, epoch)) return;
         Pending state = pending(connection);
         try {
             byte[] hello = state.hello.get(config().getInt("hello-timeout-seconds", 10), TimeUnit.SECONDS);
+            if (!current(connection, epoch)) return;
             String clientVersion = accept(connection, name, hello);
             if (clientVersion == null) return;
+            if (!current(connection, epoch)) return;
             UUID id = connection.getProfile().getId();
             List<Message.ModuleInfo> modules = plugin.modulesFor(id);
             state.offered = modules.stream().map(module -> Signing.hex(module.sha256())).collect(Collectors.toUnmodifiableSet());
             connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Catalog(modules)));
-            switch (state.ready.get(config().getInt("install-timeout-seconds", 120), TimeUnit.SECONDS)) {
+            Message response = state.ready.get(config().getInt("install-timeout-seconds", 120), TimeUnit.SECONDS);
+            if (!current(connection, epoch)) return;
+            switch (response) {
                 case Message.Ready ready when ready.error().isEmpty() -> {
-                    plugin.access().grant(id, modules.stream().map(Message.ModuleInfo::id).toList());
+                    plugin.access().grant(id, modules.stream().map(Message.ModuleInfo::id).toList(), epoch);
                     plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}", name, clientVersion);
                 }
                 case Message.Ready ready -> {
@@ -140,6 +147,12 @@ final class HandshakeModule extends Module<DumSdk> {
         } finally {
             pending.remove(connection);
         }
+    }
+
+    private boolean current(PlayerConfigurationConnection connection, long epoch) {
+        if (!plugin.reloadInProgress() && epoch == plugin.catalogEpoch()) return true;
+        connection.disconnect(messages().get("core.reconnect"));
+        return false;
     }
 
     /** Sends WELCOME and returns the client's DUM-SDK version, or disconnects and returns null. */

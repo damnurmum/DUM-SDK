@@ -49,7 +49,7 @@ Clients run only modules signed with the key whose public half is in `Signing.RE
 
 1. Once, on the machine that signs: `./gradlew generateSigningKey`. The private key goes to `~/.dum/signing.key`; keep a copy somewhere safe and never commit it. Put the printed public key into `Signing.RELEASE_KEY`.
 2. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules` (and `dumSigningKey=<file>` for a key elsewhere).
-3. `./gradlew :dum-example-module:deploy` signs the module and puts it there; `/dumsdk reload` offers it to players on their next join.
+3. `./gradlew :dum-example-module:deploy` signs the module and puts it there. The server keeps offering its published catalog, including after a Paper restart, until `/dumsdk reload` publishes the staged jars. That command disconnects online players so everyone gets the new catalog when they rejoin. On the first startup after upgrading, the current `modules` folder becomes the initial published catalog.
 
 `./gradlew :dum-fabric:runClient -Prelease` refuses dev-signed modules, like a player's client. `-Psodium` and `-Piris` add Sodium 0.9.2 and Iris 1.11.4 to the dev client (shader packs go into `dum-fabric/run/shaderpacks`).
 

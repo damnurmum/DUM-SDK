@@ -15,6 +15,9 @@ final class ModuleAccess {
 
     enum Verdict { DELIVER, DROP, DISCONNECT }
 
+    private record Grant(Set<String> modules, long catalogEpoch) {
+    }
+
     /** A token bucket: {@code perSecond} messages on average, up to {@code burst} at once. */
     private static final class Bucket {
         double tokens;
@@ -22,11 +25,11 @@ final class ModuleAccess {
         int dropped;
     }
 
-    private final Map<UUID, Set<String>> granted = new ConcurrentHashMap<>();
+    private final Map<UUID, Grant> granted = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String, Bucket>> buckets = new ConcurrentHashMap<>();
 
-    void grant(UUID player, Collection<String> modules) {
-        granted.put(player, Set.copyOf(modules));
+    void grant(UUID player, Collection<String> modules, long catalogEpoch) {
+        granted.put(player, new Grant(Set.copyOf(modules), catalogEpoch));
         buckets.remove(player);
     }
 
@@ -35,9 +38,14 @@ final class ModuleAccess {
         buckets.remove(player);
     }
 
-    boolean has(UUID player, String module) {
-        Set<String> modules = granted.get(player);
-        return modules != null && modules.contains(module);
+    boolean current(UUID player, long catalogEpoch) {
+        Grant grant = granted.get(player);
+        return grant != null && grant.catalogEpoch == catalogEpoch;
+    }
+
+    boolean has(UUID player, String module, long catalogEpoch) {
+        Grant grant = granted.get(player);
+        return grant != null && grant.catalogEpoch == catalogEpoch && grant.modules.contains(module);
     }
 
     /**
