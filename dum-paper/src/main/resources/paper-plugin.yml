@@ -6,13 +6,6 @@ description: Server side of DUM-SDK, the client mod platform of DUM
 authors: [DUM]
 load: POSTWORLD
 
-dependencies:
-  server:
-    DUM-Core:
-      load: BEFORE
-      required: true
-      join-classpath: true
-
 permissions:
   dumsdk.admin:
     description: /dumsdk and /dumsdk reload

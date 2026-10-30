@@ -45,6 +45,22 @@ Historical checks used local SDK build labels from 0.14.x through 0.17.0 before 
 - [ ] Repeat the 0.14.0 cold session/install checks on Windows and Linux; test Sodium/Iris compatibility.
 - [ ] Validate a real cold mod with native registry entries. The integration fixture checks a mixin and managed lifecycle, not removal of native registrations or global Fabric assets (those remain loaded).
 
+## Standalone Paper plugin (0.14.1)
+
+- [x] `./gradlew build :dum-fabric:compileGametestJava -PdumCorePath=/does-not-exist` passes on macOS, including Paper and its unit tests. No private/composite Core build is used. Checked on 2026-10-30.
+- [x] SDK message tests verify first-start creation, old-file overrides, missing-key fallback, empty strings, lists, unparsed placeholders and reload without rewriting the user's file. Checked on 2026-10-30.
+- [x] Local Paper starts with only DUM-SDK installed; `/plugins` lists one plugin, and `/dumsdk` renders a custom local message. Compiled plugin classes contain no `ru/dum/core` references; plugin metadata declares no Core dependency. Checked on 2026-10-30.
+- [x] `./gradlew :dum-fabric:runClientGameTest -PstandaloneTest -PtestServer=localhost:25568` passes. Three client joins, two `/dumsdk reload` disconnects/reconnects and bundled Russian reconnect text work without Core or gameplay fixtures. The old config omits `handshake.enabled` and install timeout, and the local messages file overrides only `core.info`. Checked on 2026-10-30.
+- [x] Existing client game test passes against the standalone server with only the external DUM-Info and DUM-Runtime-Test fixture plugins added (no Core): signed module download, tagged items through `DumSdkApi`, equipment callbacks, optional failure, disconnect cleanup and reconnect. Checked on 2026-10-30.
+- [ ] Repeat the standalone plugin checks on Windows/Linux and the live setup.
+
+## Actions release workflow (0.14.1)
+
+- [x] `release.yml` passes actionlint and all its shell scripts pass `bash -n`. Local preflight checks cover manual/tag runs, tag mismatch, mismatched tag commit, an existing release, missing/blank notes, invalid versions and GitHub API failure. Checked on 2026-10-30 without publishing.
+- [x] `./gradlew --no-daemon prepareRelease` builds/tests all projects and prepares client, signature, standalone Paper jar and SHA-256 sums. Signing via `DUM_SIGNING_KEY` succeeds; the globally configured dev key is refused. Independent OpenSSL verification and checksum checks pass; neither jar contains private key bytes. Checked on 2026-10-30.
+- [x] Repository Actions secret `DUM_SIGNING_KEY` is configured; the private value is not stored in source or release artifacts. Checked on 2026-10-30.
+- [ ] Push the workflow and run the first real Actions release when the author requests a new release version. Publication itself has not been exercised by this workflow yet; the existing v0.14.0 release remains unchanged.
+
 ## Release signing key
 
 - [x] On the PC, once: `./gradlew generateSigningKey` (done 2026-10-27).
@@ -79,7 +95,7 @@ Checked on the Mac only in a dev client against a fake release (download, signat
 
 ## Server (VDS)
 
-- [ ] The plugin starts next to DUM-Core on the VDS, `/dumsdk` lists the modules.
+- [ ] The standalone plugin starts on the VDS without requiring DUM-Core, `/dumsdk` lists the modules.
 - [ ] `plugman reload DUM-SDK` with players online: nobody is kicked, new joins still get the handshake and modules.
 - [ ] DUM-Auth-TG: a player who still has to confirm a new IP in Telegram is handled by DUM-Auth-TG first; a player without the mod gets the DUM-SDK message.
 - [ ] Plasmo Voice keeps working (it uses its own plugin channels and UDP on the same port).

@@ -4,8 +4,8 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:${property("paper_version")}")
-    compileOnly("ru.dum:DUM-Core")
     implementation(project(":dum-network"))
+    testImplementation("io.papermc.paper:paper-api:${property("paper_version")}")
     testImplementation(platform("org.junit:junit-bom:5.13.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.slf4j:slf4j-api:2.0.17")

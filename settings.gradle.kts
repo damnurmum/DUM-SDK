@@ -15,14 +15,4 @@ plugins {
 
 rootProject.name = "DUM-SDK"
 
-include("dum-network", "dum-fabric")
-
-// DUM-Core is not public. The server plugin is built only where dumCorePath
-// (set in ~/.gradle/gradle.properties) points at a DUM-Core checkout.
-val dumCorePath = providers.gradleProperty("dumCorePath").orNull
-if (dumCorePath != null) {
-    includeBuild(dumCorePath)
-    include("dum-paper")
-} else {
-    println("dumCorePath is not set, skipping dum-paper")
-}
+include("dum-network", "dum-fabric", "dum-paper")

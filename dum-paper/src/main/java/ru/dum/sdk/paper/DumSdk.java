@@ -17,9 +17,6 @@ import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.Messenger;
 import org.bukkit.plugin.messaging.PluginMessageListener;
-import ru.dum.core.api.module.ModuleHost;
-import ru.dum.core.api.module.ModuleManager;
-import ru.dum.core.config.Messages;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.paper.api.DumSdkApi;
@@ -33,16 +30,16 @@ import java.util.function.BiConsumer;
 
 /**
  * DUM-SDK server side: talks to the DUM-SDK client mod over dum:sdk and carries data between client modules
- * and their server sides. Every feature is a module with its own config section.
+ * and their server sides. Uses only the Paper API and SDK code.
  */
-public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessageListener, DumSdkApi, Listener {
+public final class DumSdk extends JavaPlugin implements PluginMessageListener, DumSdkApi, Listener {
 
     private record Handler(Plugin owner, BiConsumer<Player, byte[]> handler) {
     }
 
     private final Map<String, Handler> moduleHandlers = new ConcurrentHashMap<>();
     private Messages messages;
-    private ModuleManager<DumSdk> modules;
+    private Handshake handshake;
     private final ModuleCatalog catalog = new ModuleCatalog();
     private final ModuleAccess access = new ModuleAccess();
     private ModulePublication publication;
@@ -52,8 +49,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        messages = new Messages(this);
-        messages.load();
+        messages = new Messages(getDataPath().resolve("messages.yml"), () -> getResource("messages.yml"));
 
         Messenger messenger = getServer().getMessenger();
         messenger.registerIncomingPluginChannel(this, Protocol.CHANNEL, this);
@@ -64,14 +60,15 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
 
         publication = new ModulePublication(getDataPath());
         try {
+            messages.load();
             publication.load(catalog, getSLF4JLogger());
         } catch (IOException e) {
-            getSLF4JLogger().error("Cannot load published modules", e);
+            getSLF4JLogger().error("Cannot load SDK messages or published modules", e);
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        modules = new ModuleManager<>(this, List.of(new HandshakeModule(this)));
-        modules.enableAll();
+        handshake = new Handshake(this);
+        handshake.enable();
 
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> event.registrar().register(Commands.literal("dumsdk")
                 .requires(source -> source.getSender().hasPermission("dumsdk.admin"))
@@ -91,7 +88,8 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
                         published = true;
                         reloadConfig();
                         messages.load();
-                        modules.reload();
+                        handshake.disable();
+                        handshake.enable();
                         ctx.getSource().getSender().sendMessage(messages.get("core.published", Placeholder.unparsed("count", String.valueOf(count))));
                     } catch (IOException e) {
                         getSLF4JLogger().error("Cannot publish staged modules", e);
@@ -111,11 +109,10 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
 
     @Override
     public void onDisable() {
-        if (modules != null) modules.disableAll();
+        if (handshake != null) handshake.disable();
     }
 
-    @Override
-    public Messages messages() {
+    Messages messages() {
         return messages;
     }
 
@@ -138,8 +135,8 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
             connection.disconnect(messages.get("core.reconnect"));
             return;
         }
-        if (connection instanceof PlayerConfigurationConnection configuration && modules.isEnabled("handshake")) {
-            modules.get(HandshakeModule.class).received(configuration, message);
+        if (connection instanceof PlayerConfigurationConnection configuration && handshake != null && handshake.enabled()) {
+            handshake.received(configuration, message);
         }
     }
 

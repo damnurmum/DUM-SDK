@@ -7,7 +7,8 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.event.EventHandler;
 import org.jspecify.annotations.Nullable;
-import ru.dum.core.api.module.Module;
+import org.bukkit.event.Listener;
+import org.bukkit.event.HandlerList;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.network.Signing;
@@ -30,7 +31,12 @@ import java.util.stream.Collectors;
  * the downloads the client asks for, and its READY. No HELLO in time, an incompatible protocol or modules
  * the client could not install mean a disconnect with an explanation.
  */
-final class HandshakeModule extends Module<DumSdk> {
+final class Handshake implements Listener {
+
+    private final DumSdk plugin;
+    private volatile boolean enabled;
+    private int helloTimeout;
+    private int installTimeout;
 
     /** What one connecting client has said so far; the client may speak before the configure event waits. */
     private static final class Pending {
@@ -43,15 +49,28 @@ final class HandshakeModule extends Module<DumSdk> {
     // ponytail: an entry stays if a client says HELLO but disconnects before the configure event; tiny, cleared on restart
     private final Map<PlayerConnection, Pending> pending = new ConcurrentHashMap<>();
 
-    HandshakeModule(DumSdk plugin) {
-        super(plugin, "handshake");
+    Handshake(DumSdk plugin) {
+        this.plugin = plugin;
     }
 
-    @Override
-    protected void onDisable() {
+    void enable() {
+        if (enabled || !plugin.getConfig().getBoolean("handshake.enabled", true)) return;
+        helloTimeout = plugin.getConfig().getInt("handshake.hello-timeout-seconds", 10);
+        installTimeout = plugin.getConfig().getInt("handshake.install-timeout-seconds", 120);
+        enabled = true;
+        plugin.getServer().getPluginManager().registerEvents(this, plugin);
+    }
+
+    boolean enabled() {
+        return enabled;
+    }
+
+    void disable() {
+        enabled = false;
+        HandlerList.unregisterAll(this);
         // A connection offered the old catalog must not enter after a reload.
         pending.forEach((connection, p) -> {
-            connection.disconnect(messages().get("core.reconnect"));
+            connection.disconnect(plugin.messages().get("core.reconnect"));
             p.hello.cancel(false);
             p.ready.cancel(false);
         });
@@ -60,6 +79,7 @@ final class HandshakeModule extends Module<DumSdk> {
 
     /** A message in the configuration phase, on the main thread. */
     void received(PlayerConfigurationConnection connection, byte[] data) {
+        if (!enabled) return;
         Pending state = pending(connection);
         Message message;
         try {
@@ -106,7 +126,7 @@ final class HandshakeModule extends Module<DumSdk> {
         if (!current(connection, epoch)) return;
         Pending state = pending(connection);
         try {
-            byte[] hello = state.hello.get(config().getInt("hello-timeout-seconds", 10), TimeUnit.SECONDS);
+            byte[] hello = state.hello.get(helloTimeout, TimeUnit.SECONDS);
             if (!current(connection, epoch)) return;
             String clientVersion = accept(connection, name, hello);
             if (clientVersion == null) return;
@@ -115,7 +135,7 @@ final class HandshakeModule extends Module<DumSdk> {
             List<Message.ModuleInfo> modules = plugin.modulesFor(id);
             state.offered = modules.stream().map(module -> Signing.hex(module.sha256())).collect(Collectors.toUnmodifiableSet());
             connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Catalog(modules)));
-            Message response = state.ready.get(config().getInt("install-timeout-seconds", 120), TimeUnit.SECONDS);
+            Message response = state.ready.get(installTimeout, TimeUnit.SECONDS);
             if (!current(connection, epoch)) return;
             switch (response) {
                 case Message.Ready ready when ready.error().isEmpty() -> {
@@ -124,34 +144,34 @@ final class HandshakeModule extends Module<DumSdk> {
                 }
                 case Message.Ready ready -> {
                     plugin.getSLF4JLogger().info("{} could not install modules ({}), disconnecting", name, ready.error());
-                    connection.disconnect(messages().get("handshake.install-failed", Placeholder.unparsed("reason", ready.error())));
+                    connection.disconnect(plugin.messages().get("handshake.install-failed", Placeholder.unparsed("reason", ready.error())));
                 }
                 case Message.Restart restart -> {
                     plugin.getSLF4JLogger().info("{} gets Fabric mods {} changed on restart, disconnecting", name, restart.mods());
-                    connection.disconnect(messages().get("handshake.restart", Placeholder.unparsed("mods", String.join(", ", restart.mods()))));
+                    connection.disconnect(plugin.messages().get("handshake.restart", Placeholder.unparsed("mods", String.join(", ", restart.mods()))));
                 }
                 default -> throw new IllegalStateException();
             }
         } catch (TimeoutException e) {
             if (state.hello.isDone()) {
                 plugin.getSLF4JLogger().info("{} did not install modules in time, disconnecting", name);
-                connection.disconnect(messages().get("handshake.install-timeout"));
+                connection.disconnect(plugin.messages().get("handshake.install-timeout"));
             } else {
                 plugin.getSLF4JLogger().info("{} has no DUM-SDK, disconnecting", name);
-                connection.disconnect(messages().get("handshake.missing"));
+                connection.disconnect(plugin.messages().get("handshake.missing"));
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (CancellationException | ExecutionException e) {
-            // The module was disabled while waiting
+            // The handshake was disabled while waiting
         } finally {
             pending.remove(connection);
         }
     }
 
     private boolean current(PlayerConfigurationConnection connection, long epoch) {
-        if (!plugin.reloadInProgress() && epoch == plugin.catalogEpoch()) return true;
-        connection.disconnect(messages().get("core.reconnect"));
+        if (enabled && !plugin.reloadInProgress() && epoch == plugin.catalogEpoch()) return true;
+        connection.disconnect(plugin.messages().get("core.reconnect"));
         return false;
     }
 
@@ -182,6 +202,6 @@ final class HandshakeModule extends Module<DumSdk> {
     }
 
     private Component outdated(String key, String client, String server) {
-        return messages().get(key, Placeholder.unparsed("client", client), Placeholder.unparsed("server", server));
+        return plugin.messages().get(key, Placeholder.unparsed("client", client), Placeholder.unparsed("server", server));
     }
 }

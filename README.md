@@ -20,7 +20,7 @@ Work in progress. Done so far:
 |---|---|
 | `dum-network` | Wire format of the `dum:sdk` channel, shared by both sides |
 | `dum-fabric` | The client mod (Minecraft 26.2, Fabric) |
-| `dum-paper` | The server plugin (Paper 26.2), built on DUM-Core |
+| `dum-paper` | The standalone server plugin (Paper 26.2) |
 
 Examples and test fixtures are maintained outside this repository. In the author's workspace they live in the sibling `DUM-SDK-Examples` directory: `info`, its separate Paper plugin, `sdktest` and the cold-load test mod.
 
@@ -61,30 +61,29 @@ Gradle runs on Java 25 and downloads it if needed (`gradle/gradle-daemon-jvm.pro
 ./gradlew build
 ```
 
-`dum-paper` depends on DUM-Core, which is not public. It is built only when `dumCorePath` in `~/.gradle/gradle.properties` points at a DUM-Core checkout:
+The current checkout builds all three projects, including `dum-paper`, without private dependencies or a `dumCorePath` setting. The Paper plugin loads on Paper 26.2 without DUM-Core and owns its messages and handshake lifecycle.
 
-```
-dumCorePath=/path/to/DUM-Core
-```
+DUM-Core independence starts with 0.14.1. The older v0.14.0 Paper artifact still requires DUM-Core. Existing `config.yml`, `messages.yml`, published catalogs and the `DumSdkApi` service remain supported.
 
 `./gradlew :dum-fabric:runClient -Pjoin=localhost` starts a dev client and connects to a local server.
 
 ## Releasing the mod
 
-The mod updates itself from GitHub Releases: at every game start it looks at the latest release, and a newer `DUM-SDK.jar` signed with the release key replaces the installed one after the game exits (the player sees a toast). Releases are made on the PC that holds the key, after pushing the code:
+The mod updates itself from GitHub Releases: at every game start it checks the latest release and installs a newer `DUM-SDK.jar` only if its signature matches the release key.
 
-```
-./gradlew :dum-fabric:releaseSdk
-```
+Releases are published by [Release](.github/workflows/release.yml). Only when the author requests a release, update `version` in `gradle.properties`, prepare `.github/release-notes/<version>.md` from `.github/release-notes/UNRELEASED.md`, commit and push. Then run **Actions > Release > Run workflow** on `main`, or push the matching `v<version>` tag. Ordinary commits and branch pushes do not publish or change the version.
 
-It builds and signs the jar, refuses a key that is not `Signing.RELEASE_KEY`, and creates release `v<version>` with `DUM-SDK.jar` and `DUM-SDK.jar.sig` through the `gh` CLI. Change `version` in `gradle.properties` only when the author requests a release; ordinary development, commits and pushes keep the last published version. Choose the next release number for all accumulated changes. Updating works from the first release that already carries the release key.
+The workflow builds and tests all projects, signs the client with repository secret `DUM_SIGNING_KEY`, verifies it against `Signing.RELEASE_KEY`, and publishes `DUM-SDK.jar`, `DUM-SDK.jar.sig`, `DUM-SDK-Paper-<version>.jar` and `SHA256SUMS.txt`. Missing descriptions, mismatched tags/versions and existing releases fail before publication. The release description comes directly from the versioned notes file.
+
+`./gradlew --no-daemon prepareRelease` prepares the same files locally in `build/release` without publishing. It accepts the key from `DUM_SIGNING_KEY`, `-PdumSigningKey=<file>` or `~/.dum/signing.key`. See [release instructions](.github/release-notes/README.md).
 
 `./gradlew :dum-fabric:runClient -PupdateTest=<url of a release JSON>` runs the self-update in a dev client against a fake release (dev-signed jars are accepted then).
 
 ## Tests
 
 - `./gradlew test`: unit tests of the wire format, signatures, the event bridge, module dependencies and version order.
-- `./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port] [-PplainServer=host:port]`: an end-to-end client game test. Start a test server first (DUM-Core, DUM-SDK, the separately built `info`, `sdktest` 0.4.0+ and `DUM-Runtime-Test` fixtures, no cold-load mods). It checks handshake, item/equipment presentation, optional module failure and cleanup. An optional second server without plugins checks that effects stay off after switching servers. Screenshots land in `dum-fabric/build/run/clientGameTest/screenshots`.
+- `./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port] [-PplainServer=host:port]`: an end-to-end client game test. Start a test server first (DUM-SDK, the separately built `info`, `sdktest` 0.4.0+ and `DUM-Runtime-Test` fixtures, no cold-load mods). It checks handshake, item/equipment presentation, optional module failure and cleanup. An optional second server without plugins checks that effects stay off after switching servers. Screenshots land in `dum-fabric/build/run/clientGameTest/screenshots`.
+- `./gradlew :dum-fabric:runClientGameTest -PstandaloneTest -PtestServer=localhost:25568`: checks a Paper server with only DUM-SDK and an empty published catalog. Give the test player `Player0` operator permission. It joins, runs `/dumsdk`, reloads twice and reconnects, exercising the standalone handshake and messages without external fixtures.
 - Cold mod lifecycle integration uses `-PcoldInstallTest` then `-PcoldTest`, with a persistent `-PgameDir` and the external `dumcoldtest` 0.4.0+ fixture. See [test setup and commands](docs/modules.md#development).
 
 ## Manual checks

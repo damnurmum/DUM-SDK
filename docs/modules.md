@@ -33,7 +33,7 @@ dependencies {
     minecraft("com.mojang:minecraft:26.2")
     implementation("net.fabricmc:fabric-loader:0.19.5")
     implementation("net.fabricmc.fabric-api:fabric-api:0.161.0+26.2")
-    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-0.14.0.jar"))
+    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-0.14.1.jar"))
 }
 ```
 
@@ -178,6 +178,8 @@ Classes, mixins and native registries remain loaded for the JVM lifetime. The co
 Connecting to an ordinary server or singleplayer never enables a cold mod. Connecting to an SDK server whose catalog lacks a compliant loaded mod leaves it inactive and schedules its file for removal after exit, without requiring an immediate restart. Returning to a server that wants the same still-loaded jar cancels that removal plan. Legacy loaded mods absent from a catalog still require a restart, since they have no scoped lifecycle.
 
 ## Development
+
+The Paper plugin is standalone starting with 0.14.1: build it without DUM-Core or `dumCorePath`. Published v0.14.0 still requires DUM-Core. For a fixture-free integration test, run Paper with only the checkout's SDK jar, an empty catalog and operator `Player0`, then use `./gradlew :dum-fabric:runClientGameTest -PstandaloneTest -PtestServer=localhost:25568`.
 
 - `./gradlew :dum-fabric:runClient -Pjoin=localhost` starts a dev client and joins a local server. Dev clients also accept modules signed with the dev key.
 - `-Prelease` makes the dev client refuse dev-signed modules, like a player's client.

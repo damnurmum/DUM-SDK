@@ -1,4 +1,4 @@
-# DUM-SDK server side. Every feature is a module with its own section; player texts are in messages.yml.
+# DUM-SDK server side. Player texts are in messages.yml.
 
 # Handshake with the DUM-SDK client mod in the configuration phase, before the player enters the world:
 # version check, then the client installs the signed modules from plugins/DUM-SDK/modules.

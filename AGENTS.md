@@ -14,8 +14,9 @@ These instructions capture the author's rules from the DUM-SDK Claude handoff an
 
 - Do not increase SDK or example/module versions for ordinary development, fixes, documentation changes, commits or pushes. Keep the last published SDK version in `gradle.properties` until the author explicitly asks for a release/version change.
 - Only when the author asks for a release, choose the next version for the accumulated changes, update it and prepare/publish the requested release. A commit or push alone is not permission to release.
+- Keep release descriptions in `.github/release-notes/<version>.md` and collect pending changes in `.github/release-notes/UNRELEASED.md`. Publish through the Release workflow only when the author asks.
 - Describe unpublished features as unreleased, without inventing intermediate release numbers. Preserve historical test build labels as such; do not present them as published releases.
-- Run checks relevant to the change. `./gradlew build` is the baseline when the local DUM-Core checkout is configured. Report exactly which tests ran and which environments were not checked.
+- Run checks relevant to the change. `./gradlew build` is the baseline and includes the standalone Paper plugin. Report exactly which tests ran and which environments were not checked.
 - Exercise new wire messages through the actual protocol codec on both sides before deployment. Test code that creates game entities on the local Paper server before deploying it to players.
 - When reading new Paper config values, account for older deployed configs that may lack the keys.
 

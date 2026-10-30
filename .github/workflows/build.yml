@@ -18,11 +18,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      # DUM-Core is private, so dum-paper is skipped here (no dumCorePath); everything else builds and is tested
       - name: Build and test
         run: ./gradlew build
 
       - uses: actions/upload-artifact@v7
         with:
           name: DUM-SDK
-          path: dum-fabric/build/libs/DUM-SDK-*.jar
+          path: |
+            dum-fabric/build/libs/DUM-SDK-*.jar
+            dum-paper/build/libs/DUM-SDK-Paper-*.jar

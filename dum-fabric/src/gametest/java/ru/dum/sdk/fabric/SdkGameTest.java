@@ -25,7 +25,7 @@ import net.minecraft.world.item.component.CustomData;
 import java.util.List;
 
 /**
- * End to end, against a running test server (DUM-Core, DUM-SDK, DUM-Runtime-Test, info and sdktest, no cold mods):
+ * End to end, against a running test server (DUM-SDK, DUM-Runtime-Test, info and sdktest, no cold mods):
  * join, check the handshake and the modules, break sdktest with its key and check that only it went down,
  * look at /sdk, leave and check that everything is unloaded. Screenshots go to the run folder.
  * Start the server first, then ./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port].
@@ -37,6 +37,10 @@ public final class SdkGameTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        if (Boolean.getBoolean("dumsdk.standaloneTest")) {
+            StandalonePaperGameTest.run(context);
+            return;
+        }
         if (Boolean.getBoolean("dumsdk.coldInstallTest")) {
             ColdSessionGameTest.install(context);
             return;

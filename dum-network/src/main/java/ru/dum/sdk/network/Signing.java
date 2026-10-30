@@ -16,7 +16,7 @@ import java.util.HexFormat;
  */
 public final class Signing {
 
-    /** The author's key, generated on the PC (the private half is only there, in ~/.dum/signing.key). */
+    /** Public release verification key; its private counterpart stays in local signing storage or Actions secrets. */
     private static final String RELEASE_KEY = "MCowBQYDK2VwAyEAFVj14rQPqVSmXm7AXrSOYuz86u9OrFvdqHCCne2FCEI=";
 
     /** A test key from the laptop. Accepted only in a development environment (Loom runClient). */

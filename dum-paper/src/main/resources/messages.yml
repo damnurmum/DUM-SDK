@@ -1,4 +1,4 @@
-# DUM-SDK player texts (MiniMessage, same as DUM-Core).
+# DUM-SDK player texts (MiniMessage).
 
 core:
   # /dumsdk. <modules>: the client modules this server hands out
