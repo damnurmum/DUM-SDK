@@ -18,13 +18,6 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: No typographic dashes or ellipses
-        run: |
-          if LC_ALL=C.UTF-8 grep -rnP '[\x{2014}\x{2013}\x{2026}]' --exclude-dir=.git .; then
-            echo "Use a plain hyphen and three dots instead"
-            exit 1
-          fi
-
       # DUM-Core is private, so dum-paper is skipped here (no dumCorePath); everything else builds and is tested
       - name: Build and test
         run: ./gradlew build

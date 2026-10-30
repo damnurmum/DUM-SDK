@@ -58,7 +58,7 @@ Checked on the Mac only in a dev client against a fake release (download, signat
 
 - [x] Accessory slots: a compass and a clock go in, other items are refused. Checked by the author 2026-10-27; swapping with the cursor item not reported.
 - [x] Death without keepInventory: the compass and the clock from the slots drop with the rest; with keepInventory they stay. Checked by the author 2026-10-27.
-- [ ] The slots keep their items across rejoins (checked 2026-10-27) and server restarts (not checked yet).
+- [x] The slots keep their items across rejoins (checked 2026-10-27) and server restarts. Checked on 2026-10-30 with the local Paper server and DUM-SDK 0.14.2: the author reconnected in the same client after a server restart, and both items and their information lines remained.
 - [ ] The death flag shows over the last death point (checked 2026-10-27); only in the right dimension and moving after a new death, not checked yet.
 
 ## Open questions
