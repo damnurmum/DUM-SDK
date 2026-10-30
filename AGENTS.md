@@ -4,7 +4,7 @@ These instructions capture the author's rules from the DUM-SDK Claude handoff an
 
 ## Communication and repository style
 
-- Talk with the author in Russian. Keep reports concrete: state what changed, how it was checked, what was not checked, and the resulting version.
+- Talk with the author in Russian. Keep reports concrete: state what changed, how it was checked, what was not checked, and whether anything was released.
 - Keep repository content in English, including code, comments, documentation, and commit messages. Text shown to players in the game must be in Russian.
 - Do not use Unicode en dashes, em dashes, or the Unicode ellipsis in repository files, commit messages, or chat. Use ASCII punctuation instead.
 - Do not add an AI agent `Co-Authored-By` trailer to commits.
@@ -12,7 +12,9 @@ These instructions capture the author's rules from the DUM-SDK Claude handoff an
 
 ## Changes and verification
 
-- Increase `version` in `gradle.properties` for every repository change. Use a minor version for a feature and a patch version for a fix or documentation change.
+- Do not increase SDK or example/module versions for ordinary development, fixes, documentation changes, commits or pushes. Keep the last published SDK version in `gradle.properties` until the author explicitly asks for a release/version change.
+- Only when the author asks for a release, choose the next version for the accumulated changes, update it and prepare/publish the requested release. A commit or push alone is not permission to release.
+- Describe unpublished features as unreleased, without inventing intermediate release numbers. Preserve historical test build labels as such; do not present them as published releases.
 - Run checks relevant to the change. `./gradlew build` is the baseline when the local DUM-Core checkout is configured. Report exactly which tests ran and which environments were not checked.
 - Exercise new wire messages through the actual protocol codec on both sides before deployment. Test code that creates game entities on the local Paper server before deploying it to players.
 - When reading new Paper config values, account for older deployed configs that may lack the keys.

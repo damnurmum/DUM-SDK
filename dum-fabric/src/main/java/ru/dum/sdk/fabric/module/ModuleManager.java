@@ -8,6 +8,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.version.VersionPredicate;
+import net.fabricmc.loader.api.metadata.ModDependency;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.toasts.SystemToast;
@@ -16,10 +17,19 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.resources.Identifier;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.CustomData;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.dum.sdk.api.DumModule;
+import ru.dum.sdk.api.DumServerMod;
+import ru.dum.sdk.fabric.cold.ColdMods;
+import ru.dum.sdk.network.ServerModContract;
 import ru.dum.sdk.api.ScreenLayer;
+import ru.dum.sdk.api.EquipmentRenderLayer;
+import ru.dum.sdk.api.ItemDefinition;
 
 import java.io.IOException;
 import java.lang.ref.WeakReference;
@@ -34,9 +44,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -44,7 +56,8 @@ import java.util.function.Predicate;
  * Client modules installed from the server ({@link ModuleInstaller}): they are loaded, each in its own class loader,
  * once the configuration phase has them in place, and unloaded when we leave. Fabric events cannot be unregistered,
  * so the SDK registers each hook once and passes it on to the running modules.
- * Everything except {@link #init} runs on the render thread.
+ * Cooperative cold Fabric mods share this lifecycle and context; Fabric retains their class loaders.
+ * Mutations except packet callbacks run on the render thread; session queries may run on other threads.
  */
 public final class ModuleManager {
 
@@ -75,11 +88,13 @@ public final class ModuleManager {
     private List<ModuleManifest> required = List.of();
     /** A module consumed the last mouse press, so the screen must not see its release either. */
     private boolean pressConsumed;
+    private final BooleanSupplier active;
 
-    public ModuleManager(Path root) {
+    public ModuleManager(Path root, BooleanSupplier active) {
         this.root = root;
         this.activeMarker = root.resolve("modules-active");
         this.keys = new ModuleKeys(root);
+        this.active = active;
     }
 
     public void init() {
@@ -92,6 +107,7 @@ public final class ModuleManager {
         if (safeMode) LOG.warn("The game did not close cleanly while modules were running: safe mode, modules stay off until restart");
 
         PacketHooks.manager = this;
+        AppearanceHooks.manager = this;
         HudElementRegistry.addLast(Identifier.fromNamespaceAndPath("dum-sdk", "modules"),
                 (graphics, delta) -> dispatch("HUD", m -> m.huds, hud -> hud.extractRenderState(graphics, delta)));
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -124,11 +140,24 @@ public final class ModuleManager {
      * Loads and turns on every module of these jars that can run, then their resources.
      * Completes when the resources are loaded.
      */
-    public CompletableFuture<Void> start(List<Path> jars) {
+    public CompletableFuture<Void> start(List<Path> jars, List<ColdMods.Mod> mods) {
         if (!running.isEmpty()) return CompletableFuture.completedFuture(null);
         List<ModuleManifest> all = new ArrayList<>();
         Map<String, Candidate> found = scan(jars, all);
         List<Candidate> order = resolve(found);
+        Map<String, Candidate> cold = new LinkedHashMap<>();
+        Set<String> coldIds = mods.stream().map(ColdMods.Mod::id).collect(java.util.stream.Collectors.toSet());
+        for (ColdMods.Mod mod : mods) {
+            Map<String, String> dependencies = new LinkedHashMap<>();
+            FabricLoader.getInstance().getModContainer(mod.id()).orElseThrow().getMetadata().getDependencies().stream()
+                    .filter(d -> d.getKind() == ModDependency.Kind.DEPENDS && coldIds.contains(d.getModId()))
+                    .forEach(d -> dependencies.put(d.getModId(), "*"));
+            ModuleManifest manifest = new ModuleManifest(mod.id(), mod.version(), API_VERSION, ServerModContract.ENTRYPOINT,
+                    dependencies, "cold", true);
+            all.add(manifest);
+            cold.put(mod.id(), new Candidate(manifest, mod.jar()));
+        }
+        List<Candidate> coldOrder = resolve(cold);
         if (all.isEmpty()) return CompletableFuture.completedFuture(null);
         // Playing without the server's modules would be playing by other rules: no join until the game restarts
         if (safeMode) {
@@ -136,9 +165,12 @@ public final class ModuleManager {
                     "Игра в прошлый раз закрылась с ошибкой, и модули выключены до перезапуска. Перезапусти игру"));
         }
         try {
-            Files.writeString(activeMarker, String.join("\n", order.stream().map(c -> c.manifest.id()).toList()));
+            Files.writeString(activeMarker, String.join("\n", all.stream().map(ModuleManifest::id).toList()));
         } catch (IOException e) {
             LOG.warn("Cannot write {}", activeMarker, e);
+        }
+        for (Candidate candidate : coldOrder) {
+            if (candidate.manifest.deps().keySet().stream().allMatch(this::isRunning)) enableMod(candidate);
         }
         for (Candidate candidate : order) {
             if (candidate.manifest.deps().keySet().stream().allMatch(this::isRunning)) {
@@ -156,17 +188,43 @@ public final class ModuleManager {
         required = all;
         Map<String, Path> assets = new LinkedHashMap<>();
         for (RunningModule module : running) {
-            if (ModulePacks.hasAssets(module.jar)) assets.put(module.id(), module.jar);
+            if (module.loader != null && ModulePacks.hasAssets(module.jar)) assets.put(module.id(), module.jar);
         }
         return packs.set(assets);
     }
 
+    /** Used by permanent mixins: an unrelated SDK server must never activate a cached cold mod. */
+    public boolean modActive(String id) {
+        return active.getAsBoolean() && running.stream().anyMatch(m -> m.loader == null && m.id().equals(id) && m.active());
+    }
+
+    private void enableMod(Candidate candidate) {
+        ModuleManifest manifest = candidate.manifest;
+        try {
+            var entries = FabricLoader.getInstance().getEntrypointContainers(ServerModContract.ENTRYPOINT, DumServerMod.class)
+                    .stream().filter(e -> e.getProvider().getMetadata().getId().equals(manifest.id())).toList();
+            if (entries.size() != 1) throw new IllegalStateException("Expected one server-scoped entrypoint for " + manifest.id());
+            DumServerMod instance = entries.getFirst().getEntrypoint();
+            RunningModule module = new RunningModule(manifest, candidate.jar, null, instance, root.resolve("data").resolve(manifest.id()), keys, events, active);
+            running.add(module);
+            try {
+                instance.onEnable(module);
+                LOG.info("Server-scoped Fabric mod {} {} is prepared", manifest.id(), manifest.version());
+            } catch (RuntimeException | LinkageError e) {
+                fail(module, "запуск мода", e);
+            }
+        } catch (RuntimeException | LinkageError e) {
+            LOG.error("Cannot prepare server-scoped Fabric mod {}", manifest.id(), e);
+        }
+    }
+
     /** Data from the server side of a module; dropped if that module is not running. */
     public void deliver(String id, byte[] data) {
+        if (!active.getAsBoolean()) return;
         for (RunningModule module : running) {
             if (!module.id().equals(id)) continue;
             var handler = module.serverHandler;
-            if (handler == null || module.failed) return;
+            if (handler == null || !module.active()) return;
             long start = System.nanoTime();
             try {
                 handler.accept(data);
@@ -180,6 +238,7 @@ public final class ModuleManager {
 
     /** Turns off and unloads every running module, dependents first. Their resources stay until {@link #dropResources}. */
     public void stop() {
+        pressConsumed = false;
         required = List.of();
         for (RunningModule module : running.reversed()) stop(module);
         try {
@@ -196,6 +255,53 @@ public final class ModuleManager {
      */
     public void dropResources() {
         if (running.isEmpty()) packs.set(Map.of());
+    }
+
+    ItemStack equipment(EquipmentRenderLayer layer, ItemStack equipped) {
+        if (!active.getAsBoolean()) return equipped;
+        ItemStack result = equipped;
+        for (RunningModule module : running) {
+            if (!module.active()) continue;
+            for (var appearance : module.equipment) {
+                long start = System.nanoTime();
+                try {
+                    result = Objects.requireNonNull(appearance.resolve(layer, result), "Null equipment appearance");
+                } catch (RuntimeException | LinkageError e) {
+                    fail(module, "изображение экипировки", e);
+                    break;
+                } finally {
+                    module.nanos.addAndGet(System.nanoTime() - start);
+                }
+            }
+        }
+        return result;
+    }
+
+    ItemStack itemAppearance(ItemStack stack) {
+        ItemDefinition definition = itemDefinition(stack);
+        if (definition == null) return stack;
+        ItemStack rendered = stack.copy();
+        rendered.set(DataComponents.ITEM_MODEL, definition.model());
+        return rendered;
+    }
+
+    Component itemName(ItemStack stack, Component original) {
+        if (stack.has(DataComponents.CUSTOM_NAME)) return original;
+        ItemDefinition definition = itemDefinition(stack);
+        return definition == null ? original : definition.name();
+    }
+
+    private @Nullable ItemDefinition itemDefinition(ItemStack stack) {
+        if (!active.getAsBoolean() || stack.isEmpty()) return null;
+        CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+        if (data == null) return null;
+        String value = data.copyTag().getCompoundOrEmpty("PublicBukkitValues").getString("dum-sdk:item").orElse("");
+        Identifier id = Identifier.tryParse(value);
+        if (id == null) return null;
+        for (RunningModule module : running) {
+            if (module.active() && module.id().equals(id.getNamespace())) return module.items.get(id.getPath());
+        }
+        return null;
     }
 
     private boolean isRunning(String id) {
@@ -290,7 +396,7 @@ public final class ModuleManager {
         RunningModule module;
         try {
             DumModule instance = loader.loadClass(manifest.entrypoint()).asSubclass(DumModule.class).getConstructor().newInstance();
-            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys, events);
+            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys, events, active);
         } catch (ReflectiveOperationException | ClassCastException | LinkageError e) {
             LOG.error("Cannot create module {} from {}", manifest.id(), manifest.entrypoint(), e);
             close(loader, manifest.id());
@@ -316,6 +422,7 @@ public final class ModuleManager {
         failures.add(new Failure(module.id(), where, error.toString(), LocalTime.now().withNano(0)));
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> {
+            if (!running.contains(module)) return;
             stop(module);
             // A required module (or one it took down) is gone: playing on would be playing by other rules
             if (!missingRequired(required, this::isRunning).isEmpty() && minecraft.getConnection() != null) {
@@ -343,15 +450,16 @@ public final class ModuleManager {
         for (RunningModule other : running) {
             if (other.manifest.deps().containsKey(module.id())) stop(other);
         }
+        module.failed = true;
         try {
             module.instance.onDisable();
         } catch (RuntimeException | LinkageError e) {
             LOG.error("Module {} failed while turning off", module.id(), e);
         }
         module.clear();
-        close(module.loader, module.id());
+        if (module.loader != null) close(module.loader, module.id());
         LOG.info("Module {} is off", module.id());
-        if (FabricLoader.getInstance().isDevelopmentEnvironment()) checkUnloaded(module.loader, module.id());
+        if (module.loader != null && FabricLoader.getInstance().isDevelopmentEnvironment()) checkUnloaded(module.loader, module.id());
     }
 
     private static void close(URLClassLoader loader, String id) {
@@ -384,8 +492,9 @@ public final class ModuleManager {
 
     /** True to let the packet through; any thread for sent packets. */
     boolean packet(Packet<?> packet, boolean received) {
+        if (!active.getAsBoolean()) return true;
         for (RunningModule module : running) {
-            if (module.failed) continue;
+            if (!module.active()) continue;
             for (RunningModule.PacketHandler handler : received ? module.received : module.sent) {
                 if (!handler.type().isInstance(packet)) continue;
                 long start = System.nanoTime();
@@ -403,8 +512,9 @@ public final class ModuleManager {
     }
 
     private boolean clickConsumed(Screen screen, MouseButtonEvent event) {
+        if (!active.getAsBoolean()) return false;
         for (RunningModule module : running) {
-            if (module.failed) continue;
+            if (!module.active()) continue;
             for (ScreenLayer layer : module.screens) {
                 long start = System.nanoTime();
                 try {
@@ -422,8 +532,9 @@ public final class ModuleManager {
 
     /** Calls every registration of every running module; a module that throws is turned off. */
     private <T> void dispatch(String where, Function<RunningModule, List<T>> registrations, Consumer<T> call) {
+        if (!active.getAsBoolean()) return;
         for (RunningModule module : running) {
-            if (module.failed) continue;
+            if (!module.active()) continue;
             long start = System.nanoTime();
             for (T registration : registrations.apply(module)) {
                 try {

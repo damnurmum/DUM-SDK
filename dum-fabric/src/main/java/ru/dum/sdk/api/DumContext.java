@@ -12,12 +12,20 @@ import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /**
- * What the SDK gives a running module. Everything registered here is removed when the module is turned off.
+ * What the SDK gives a running module or server-scoped Fabric mod. Everything registered here is removed when the module is turned off.
  * A module may also use any game or Fabric class directly, but then it has to clean up after itself.
  */
 public interface DumContext {
 
     String id();
+
+    /** This exact context is still enabled in its accepted play session; false after leaving, including on reconnect. */
+    default boolean active() { return false; }
+
+    /** Cleanup for effects created outside SDK registrations. Called once on unload, in reverse registration order. */
+    default void onClose(Runnable cleanup) {
+        throw new UnsupportedOperationException("This DUM-SDK does not support managed cleanup");
+    }
 
     Logger logger();
 
@@ -32,6 +40,16 @@ public interface DumContext {
 
     /** Drawing and clicks on game screens. */
     void screen(ScreenLayer layer);
+
+    /** Presentation callbacks for armor and wings. Active only in play after the SDK handshake; removed on unload. */
+    default void equipmentAppearance(EquipmentAppearance appearance) {
+        throw new UnsupportedOperationException("This DUM-SDK does not support equipment appearances");
+    }
+
+    /** Registers <module id>:<definition id> for this session; no native Minecraft registry is changed. */
+    default void item(ItemDefinition definition) {
+        throw new UnsupportedOperationException("This DUM-SDK does not support item definitions");
+    }
 
     /** Data the server side of this module sends; called on the render thread. One handler per module. */
     void onServerMessage(Consumer<byte[]> handler);

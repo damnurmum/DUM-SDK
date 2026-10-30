@@ -5,7 +5,7 @@ DUM-SDK runs code that the server hands out. There are two kinds:
 | | Module (hot load) | Fabric mod (cold load) |
 |---|---|---|
 | What it is | A plain jar with `dum-module.json` | A normal Fabric mod jar with `fabric.mod.json` |
-| When it runs | Right after joining; unloaded on leaving | After the game restarts, until it is removed |
+| When it runs | Right after joining; unloaded on leaving | Loaded at startup; effects enabled only for the accepted server catalog |
 | Mixins, registries, early hooks | No | Yes |
 | Use it for | Almost everything: HUD, screens, keys, world rendering, events, packets, resources | What a module cannot reach: changing the game's own code |
 
@@ -26,18 +26,18 @@ A module that would break these rules to work is a sign that its logic belongs o
 
 ### Project
 
-Copy `dum-example-module`. Its build compiles against Minecraft (Loom, no mappings: 26.2 is not obfuscated), Fabric API and the SDK:
+Create a separate Gradle project for the module. It compiles against Minecraft (Loom, no mappings: 26.2 is not obfuscated), Fabric API and a built SDK jar. The examples are maintained outside this repository; the author's workspace has them in the sibling `DUM-SDK-Examples` directory.
 
 ```kotlin
 dependencies {
     minecraft("com.mojang:minecraft:26.2")
     implementation("net.fabricmc:fabric-loader:0.19.5")
     implementation("net.fabricmc.fabric-api:fabric-api:0.161.0+26.2")
-    compileOnly(project(":dum-fabric"))
+    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-0.14.0.jar"))
 }
 ```
 
-Add the project to the `deploy` list in the root `build.gradle.kts`.
+Build the SDK jar first (`./gradlew :dum-fabric:jar` in the SDK checkout). The presentation APIs and server-scoped cold mod contract require SDK 0.14.0 or newer. Keep the module's build, signing and deployment tasks in its own project.
 
 ### dum-module.json
 
@@ -46,7 +46,7 @@ Add the project to the `deploy` list in the root `build.gradle.kts`.
 	"id": "info",
 	"version": "0.4.0",
 	"apiVersion": 1,
-	"entrypoint": "ru.dum.sdk.example.InfoModule",
+	"entrypoint": "com.example.InfoModule",
 	"dependencies": { "other-module": ">=1.0.0" }
 }
 ```
@@ -59,7 +59,9 @@ Add the project to the `deploy` list in the root `build.gradle.kts`.
 
 ### Lifecycle and threads
 
-`DumModule.onEnable(DumContext)` runs on the render thread once the configuration phase is over (before the player is in the world), `onDisable()` when the player leaves or the game closes. Each module has its own class loader; after `onDisable` the SDK removes everything registered through the context and drops the loader. In a development client the log says whether the module was fully unloaded: if not, something still holds a reference to its classes (a listener registered directly with Fabric, a thread, a static field of a game class).
+`DumModule.onEnable(DumContext)` runs on the render thread during configuration, after its jar is installed and before the player enters the world. `onDisable()` runs when the player leaves or the game closes. Each module has its own class loader; after `onDisable` the SDK removes everything registered through the context and drops the loader. In a development client the log says whether the module was fully unloaded: if not, something still holds a reference to its classes (a listener registered directly with Fabric, a thread, a static field of a game class).
+
+The client accepts a catalog only after a compatible WELCOME on that same connection. Registration happens during installation; callbacks become active only after installation succeeds and the player enters the server. Disconnect deactivates them immediately, before resource cleanup. A new connection gets a new installer; old downloads and queued startup callbacks cannot start modules on the next server. Cached jars alone never enable a module. Ordinary servers and singleplayer have no active SDK session.
 
 Unless stated otherwise, callbacks run on the render thread.
 
@@ -70,9 +72,13 @@ A module that throws anywhere the SDK calls it is turned off and `/sdk` shows th
 | Method | What it gives |
 |---|---|
 | `id()`, `logger()`, `dataDir()` | The module's id, a logger, a folder for files that survive restarts |
+| `active()` | Whether this exact context is enabled in the current play session |
+| `onClose(Runnable)` | Cleanup on unload, in reverse registration order |
 | `onTick(Runnable)` | End of every client tick |
 | `hud(HudElement)` | Drawing over the HUD |
 | `screen(ScreenLayer)` | Drawing on any game screen (after its background) and taking mouse clicks |
+| `equipmentAppearance(EquipmentAppearance)` | Select the item rendered by the armor or wings pass; does not change actual equipment |
+| `item(ItemDefinition)` | Register a session-local item model and default name for a tagged vanilla carrier |
 | `key(name, defaultKey, onPress)` | A key in Controls under DUM; title from the lang key `key.<module>.<name>`; bindings are kept |
 | `addEntity(Entity)` | A client-only entity, such as a display entity; gone with the level, check `isRemoved()` |
 | `on(Event, listener)` | Any Fabric API event: world rendering, input, interaction, lifecycle... |
@@ -81,6 +87,16 @@ A module that throws anywhere the SDK calls it is turned off and `/sdk` shows th
 | `onServerMessage(Consumer<byte[]>)`, `sendToServer(byte[])` | Talking to the module's server side |
 
 `Screens.containerBounds(screen)` gives the window of a container screen. A module may also use any game or Fabric class directly; then cleaning up is its own job.
+
+### Equipment and item presentation (SDK 0.14.0)
+
+`equipmentAppearance` receives an `EquipmentRenderLayer` (`ARMOR` or `WINGS`) and the equipped stack. Return that stack unchanged to pass through, `ItemStack.EMPTY` to hide that pass, or another stack for the vanilla layer to draw. Do not mutate the input. Handlers run in module dependency order and are removed when the module stops. The SDK's permanent mixins pass vanilla values through outside an active session.
+
+`context.item(new ItemDefinition("token", modelIdentifier, displayName))` registers `<module id>:token`. On Paper, `ModuleItems.create(moduleId, "token", vanillaCarrier)` clones the carrier and adds the `dum-sdk:item` PDC string. `ModuleItems.id(stack)` reads it for server-side validation. The client uses the matching active module's model and default name; a server/anvil custom name is preserved. The inventory stack is not mutated by rendering. Without that module, the underlying vanilla appearance is used.
+
+These definitions do not add native registry entries, item physics or server gameplay. The server owns the real item and validates its use. The prototype supports names and models; other properties and additional native types need separate work.
+
+`ServerSession.active()` reports whether this connection completed handshake, installation and play join. For a cold mod use `ServerSession.active("my_mod")` instead: another SDK server may not have that mod in its catalog. `context.active()` refers to that exact context and stays false after unload, even when the same mod rejoins. Hot and cold registrations through `DumContext` are scoped automatically.
 
 ### Resources
 
@@ -131,18 +147,47 @@ The server itself should not leak either: Paper's anti-xray hides ores the playe
 ## Publishing
 
 1. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules`, and `dumSigningKey=<file>` if the key is not `~/.dum/signing.key`.
-2. `./gradlew :<project>:deploy` signs the jar and copies it with its `.sig` there.
+2. In the module's own build, run its signing/deployment task. The external example projects provide `./gradlew :<project>:deploy`, which signs the jar and copies it with its `.sig` there.
 3. `/dumsdk reload` on the server publishes the staged jars and disconnects online players with a message to rejoin. Rejoining players download changed modules once and then use the cache. A whole Fabric mod still needs a game restart after the rejoin. Until publication, even a Paper restart keeps using the last published catalog. On the first startup after upgrading, the existing `modules` folder becomes the initial published catalog. If a staged jar is invalid, publication fails and the old catalog stays active.
 
 ## Fabric mods (cold load)
 
-Any Fabric mod jar can be published the same way: a jar with `fabric.mod.json` and no `dum-module.json` is treated as a whole mod (see `dum-cold-test`). On join the client checks its signature, its `depends` (Minecraft, Fabric Loader, other mods) and that the player has no copy of the same mod. If the set of such mods changed, the player is disconnected with "restart the game"; a helper process puts the jars into `mods/` as `dum-cold-<id>.jar` (or removes them) after the game exits.
+Starting with SDK 0.14.0, server-delivered Fabric mods must implement the cooperative server-scoped contract. An ordinary third-party Fabric mod is not automatically made server-scoped. Both publication and the client reject jars without this metadata:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "my_mod",
+  "version": "1.0.0",
+  "environment": "client",
+  "entrypoints": {"dum-sdk:server": ["example.MyServerMod"]},
+  "depends": {"dum-sdk": ">=0.14.0", "minecraft": "~26.2", "fabricloader": ">=0.19.5"}
+}
+```
+
+The SDK dependency must require 0.14.0 or newer: v0.13.0 does not provide this API.
+
+Declare exactly one `dum-sdk:server` entrypoint implementing `DumServerMod`. Other entrypoints (including `main`, `client` and `preLaunch`) are refused. Mixins are allowed. The SDK verifies the signature, dependencies, metadata, conflicts and the loaded jar's hash against the catalog. A missing or changed wanted mod requires a restart; the helper installs `mods/dum-cold-<id>.jar` after exit. Upgrade legacy cold mods before upgrading a published catalog; legacy jars will fail validation.
+
+`DumServerMod` has the same `onEnable(DumContext)` and `onDisable()` lifecycle as a hot module, but Fabric owns its class loader. Preparation happens on the render thread after verified configuration; managed callbacks remain passive until play join. The SDK creates a fresh context for each connection, clears its registrations on leave, and invokes `onDisable` and `context.onClose` cleanup. All cold mods are required: entrypoint startup failure refuses joining, and callback failure disconnects rather than silently changing gameplay rules. Fabric can reuse an entrypoint instance, so reset per-session state in `onEnable`.
+
+Every permanent mixin must guard its effect with `ServerSession.active("my_mod")` and leave vanilla behavior unchanged when false. For asynchronous work retain `context.active()` instead; a check by ID alone cannot distinguish an old connection from a new one. Use `context.onClose(cleanup)` for screens, sounds, tasks or state created outside managed SDK APIs. Cleanup runs once, in reverse registration order, after the context has become inactive; one throwing cleanup does not prevent subsequent cleanup callbacks. Do not let asynchronous work mutate the game after its context closes.
+
+Classes, mixins and native registries remain loaded for the JVM lifetime. The contract is a development rule for signed, reviewed code, not a Java sandbox: metadata cannot prove that a mixin, static initializer or direct Fabric listener obeys it. Native mod assets also remain available through Fabric; keep assets namespaced and do not replace vanilla/global assets. Native registered types must not introduce effects outside the mod's accepted session. Use hot module resource packs and runtime item definitions for content that must be physically removed on leave.
+
+Connecting to an ordinary server or singleplayer never enables a cold mod. Connecting to an SDK server whose catalog lacks a compliant loaded mod leaves it inactive and schedules its file for removal after exit, without requiring an immediate restart. Returning to a server that wants the same still-loaded jar cancels that removal plan. Legacy loaded mods absent from a catalog still require a restart, since they have no scoped lifecycle.
 
 ## Development
 
 - `./gradlew :dum-fabric:runClient -Pjoin=localhost` starts a dev client and joins a local server. Dev clients also accept modules signed with the dev key.
 - `-Prelease` makes the dev client refuse dev-signed modules, like a player's client.
 - `-Psodium`, `-Piris` add Sodium and Iris; shader packs go into `dum-fabric/run/shaderpacks`.
-- `dum-test-module` (`sdktest`) exercises rendering, events, packets and failures; `dum-cold-test` exercises cold load.
+- The external `DUM-SDK-Examples` projects provide `sdktest` for rendering, events, packets and failures, and `dumcoldtest` for cold load. The SDK game test requires the external `info` and `sdktest` 0.4.0+ jars and `DUM-Runtime-Test` Paper fixture on its test server.
 - `/sdk` in game: modules, time they take, Fabric mods from the server, pending restarts, failures.
 - `./gradlew :dum-fabric:runClientGameTest` joins a running test server and checks the SDK end to end; a module's own checks can follow the same pattern (`dum-fabric/src/gametest`).
+- Add `-PplainServer=localhost:25566` with a second Paper server without plugins to check that session effects remain off after switching from the SDK server to an ordinary one.
+
+Cold session integration tests use the external `dumcoldtest` 0.4.0+ fixture, with SDK 0.14.0 or newer built and installed on the main test server. Use a persistent game directory outside `build/run/clientGameTest` (the test task deletes its default directory before each run):
+
+1. `./gradlew :dum-fabric:runClientGameTest -PcoldInstallTest -PtestServer=localhost:25565 -PgameDir=/absolute/path/to/cold-client`: checks restart refusal and the helper install plan. Wait for `dum-sdk/cold-apply.log` to report `done` after the game exits.
+2. `./gradlew :dum-fabric:runClientGameTest -PcoldTest -PtestServer=localhost:25565 -PotherSdkServer=localhost:25567 -PplainServer=localhost:25566 -PgameDir=/absolute/path/to/cold-client`: checks the actual cold mixin, reconnect, old context invalidation, cleanup, a second SDK server without this mod, a server without plugins, singleplayer and required-mod failure cleanup. The second SDK server must publish an empty catalog.

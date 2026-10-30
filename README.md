@@ -7,10 +7,11 @@ Work in progress. Done so far:
 - HELLO / WELCOME handshake on the `dum:sdk` channel during the configuration phase. Players without the mod are disconnected before they enter the world.
 - Modules may carry `assets/` (textures, models, sounds, lang): while a module runs, its jar is a client resource pack on top of the others, loaded before the player enters the world.
 - Modules can add keys (Controls, category DUM; bindings kept between sessions) and client-only entities in the world, such as display entities with models from their assets.
-- Cold load: a jar in `plugins/DUM-SDK/modules` with `fabric.mod.json` and no `dum-module.json` is a whole Fabric mod (own mixins, early registration). The client checks its signature, dependencies and conflicts with the player's own mods, then plans `mods/dum-cold-<id>.jar`; the server asks the player to restart, and a small helper process changes `mods/` once the game has exited (Windows keeps loaded jars locked). Removed mods are deleted the same way.
+- Cold load: a server-scoped Fabric mod can provide its own mixins and early registrations. SDK 0.14.0 requires it to declare a `dum-sdk:server` entrypoint implementing `DumServerMod`, without startup entrypoints. The client verifies its signature, dependencies and loaded hash; installation/updates require a game restart. Only the current accepted catalog enables its managed effects. Mixins must check `ServerSession.active(modId)`; classes and native registrations remain loaded, so arbitrary third-party mods cannot be automatically suspended. See [the cold mod contract](docs/modules.md#fabric-mods-cold-load).
 - Diagnostics: `/sdk` in game lists the running modules with the time their code takes (ms per second), Fabric mods from the server, mods waiting for a restart and the modules that were turned off with their errors. A module that throws is turned off with a toast.
 - Modules can listen to any Fabric API event (`DumContext.on`), see and drop every packet the client receives or sends (`onReceive` / `onSend`), and draw in the world (`WorldDraw` has shapes that also show with Iris shader packs).
 - Modules talk to their server side over `dum:sdk` (`DumContext.sendToServer` / `onServerMessage`) and can draw on and take clicks from game screens.
+- Session-scoped appearance hooks let hot modules select armor/wings rendering and define models and names for tagged vanilla items. Their effects require a successful SDK handshake, module installation and play join; they stop on disconnect and stay off on ordinary servers. This does not hot-load arbitrary mixins or add native registry types.
 - Client modules come from the server: signed jars in `plugins/DUM-SDK/modules` are sent to the client in the configuration phase, checked (SHA-256 and Ed25519 signature), cached in `.minecraft/dum-sdk/cache` and never taken back to an older version. They are loaded, each in its own class loader, while on the server and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode. A server with modules does not let a client in safe mode join (playing without them would be playing by other rules): the player is told to restart the game.
 
 ## Layout
@@ -20,9 +21,8 @@ Work in progress. Done so far:
 | `dum-network` | Wire format of the `dum:sdk` channel, shared by both sides |
 | `dum-fabric` | The client mod (Minecraft 26.2, Fabric) |
 | `dum-paper` | The server plugin (Paper 26.2), built on DUM-Core |
-| `dum-test-module` | `sdktest`, for development: exercises world rendering, events and packets (vanilla, `-Psodium`, `-Piris`) |
-| `dum-cold-test` | `dumcoldtest`, for development: a Fabric mod with a mixin (window title mark), delivered by cold load |
-| `dum-example-module` | `info`, a client module: accessory slots for a compass and a clock, their lines on the HUD, a key to hide them, a flag over the last death point (server side: `accessories` in `dum-paper`) |
+
+Examples and test fixtures are maintained outside this repository. In the author's workspace they live in the sibling `DUM-SDK-Examples` directory: `info`, its separate Paper plugin, `sdktest` and the cold-load test mod.
 
 ## Writing a module
 
@@ -32,10 +32,10 @@ A module is a plain jar with `dum-module.json` at its root:
 
 ```json
 {
-	"id": "info",
+	"id": "example",
 	"version": "0.1.0",
 	"apiVersion": 1,
-	"entrypoint": "ru.dum.sdk.example.InfoModule",
+	"entrypoint": "com.example.ExampleModule",
 	"dependencies": { "other-module": ">=1.0.0" },
 	"loadMode": "hot"
 }
@@ -49,7 +49,7 @@ Clients run only modules signed with the key whose public half is in `Signing.RE
 
 1. Once, on the machine that signs: `./gradlew generateSigningKey`. The private key goes to `~/.dum/signing.key`; keep a copy somewhere safe and never commit it. Put the printed public key into `Signing.RELEASE_KEY`.
 2. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules` (and `dumSigningKey=<file>` for a key elsewhere).
-3. `./gradlew :dum-example-module:deploy` signs the module and puts it there. The server keeps offering its published catalog, including after a Paper restart, until `/dumsdk reload` publishes the staged jars. That command disconnects online players so everyone gets the new catalog when they rejoin. On the first startup after upgrading, the current `modules` folder becomes the initial published catalog.
+3. In the module's own project, run its signing and deployment task (the external examples provide `./gradlew :<project>:deploy`). The server keeps offering its published catalog, including after a Paper restart, until `/dumsdk reload` publishes the staged jars. That command disconnects online players so everyone gets the new catalog when they rejoin. On the first startup after upgrading, the current `modules` folder becomes the initial published catalog.
 
 `./gradlew :dum-fabric:runClient -Prelease` refuses dev-signed modules, like a player's client. `-Psodium` and `-Piris` add Sodium 0.9.2 and Iris 1.11.4 to the dev client (shader packs go into `dum-fabric/run/shaderpacks`).
 
@@ -77,14 +77,15 @@ The mod updates itself from GitHub Releases: at every game start it looks at the
 ./gradlew :dum-fabric:releaseSdk
 ```
 
-It builds and signs the jar, refuses a key that is not `Signing.RELEASE_KEY`, and creates release `v<version>` with `DUM-SDK.jar` and `DUM-SDK.jar.sig` through the `gh` CLI. Bump `version` in `gradle.properties` first. Updating works from the first release that already carries the release key.
+It builds and signs the jar, refuses a key that is not `Signing.RELEASE_KEY`, and creates release `v<version>` with `DUM-SDK.jar` and `DUM-SDK.jar.sig` through the `gh` CLI. Change `version` in `gradle.properties` only when the author requests a release; ordinary development, commits and pushes keep the last published version. Choose the next release number for all accumulated changes. Updating works from the first release that already carries the release key.
 
 `./gradlew :dum-fabric:runClient -PupdateTest=<url of a release JSON>` runs the self-update in a dev client against a fake release (dev-signed jars are accepted then).
 
 ## Tests
 
 - `./gradlew test`: unit tests of the wire format, signatures, the event bridge, module dependencies and version order.
-- `./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port]`: an end-to-end client game test. Start a test server first (DUM-Core, DUM-SDK, the `info` and `sdktest` modules, no cold-load mods); the client joins it by itself, checks the handshake and the modules, breaks `sdktest` with its key and checks that only it went down, runs `/sdk`, leaves and checks that everything is unloaded. Screenshots land in `dum-fabric/build/run/clientGameTest/screenshots`.
+- `./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port] [-PplainServer=host:port]`: an end-to-end client game test. Start a test server first (DUM-Core, DUM-SDK, the separately built `info`, `sdktest` 0.4.0+ and `DUM-Runtime-Test` fixtures, no cold-load mods). It checks handshake, item/equipment presentation, optional module failure and cleanup. An optional second server without plugins checks that effects stay off after switching servers. Screenshots land in `dum-fabric/build/run/clientGameTest/screenshots`.
+- Cold mod lifecycle integration uses `-PcoldInstallTest` then `-PcoldTest`, with a persistent `-PgameDir` and the external `dumcoldtest` 0.4.0+ fixture. See [test setup and commands](docs/modules.md#development).
 
 ## Manual checks
 

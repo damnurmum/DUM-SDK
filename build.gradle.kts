@@ -35,33 +35,3 @@ tasks.register("generateSigningKey") {
         logger.lifecycle("Public key:  ${java.util.Base64.getEncoder().encodeToString(pair.public.encoded)}")
     }
 }
-
-// Client module and cold-load mod projects. ./gradlew :<project>:deploy signs the jar with the key in dumSigningKey
-// (~/.dum/signing.key by default) and puts both into dumModulesDir, the server's plugins/DUM-SDK/modules.
-// The file name has no version, so an older one never stays next to it.
-configure(listOf(project(":dum-example-module"), project(":dum-test-module"), project(":dum-cold-test"))) {
-    tasks.register("deploy") {
-        group = "dum"
-        val jar = tasks.named<Jar>("jar")
-        val built = jar.flatMap { it.archiveFile }
-        val name = jar.flatMap { it.archiveBaseName }
-        val keyPath = providers.gradleProperty("dumSigningKey").orElse("${System.getProperty("user.home")}/.dum/signing.key")
-        val target = providers.gradleProperty("dumModulesDir")
-        dependsOn(jar)
-        doLast {
-            if (!target.isPresent) throw GradleException("Set dumModulesDir in ~/.gradle/gradle.properties to the server's plugins/DUM-SDK/modules")
-            val key = java.security.KeyFactory.getInstance("Ed25519").generatePrivate(
-                java.security.spec.PKCS8EncodedKeySpec(java.util.Base64.getDecoder().decode(File(keyPath.get()).readText().trim())))
-            val bytes = built.get().asFile.readBytes()
-            val signature = java.security.Signature.getInstance("Ed25519").run {
-                initSign(key)
-                update(bytes)
-                sign()
-            }
-            val dir = File(target.get()).apply { mkdirs() }
-            File(dir, "${name.get()}.jar").writeBytes(bytes)
-            File(dir, "${name.get()}.jar.sig").writeBytes(signature)
-            logger.lifecycle("Signed with ${keyPath.get()} and deployed to $dir")
-        }
-    }
-}

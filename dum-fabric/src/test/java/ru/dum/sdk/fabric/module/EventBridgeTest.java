@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,7 +30,23 @@ class EventBridgeTest {
     }
 
     private static RunningModule module(String id) {
-        return new RunningModule(new ModuleManifest(id, "1.0.0", 1, "x", Map.of(), null, null), null, null, null, null, null, null);
+        return new RunningModule(new ModuleManifest(id, "1.0.0", 1, "x", Map.of(), null, null), null, null, null, null, null, null, () -> true);
+    }
+
+    @Test
+    void inactiveConnectionMakesRegisteredModuleListenersPassiveImmediately() {
+        AtomicBoolean active = new AtomicBoolean(false);
+        Event<Allow> event = allowEvent();
+        EventBridge bridge = new EventBridge((module, where, error) -> { });
+        RunningModule module = new RunningModule(new ModuleManifest("m", "1.0.0", 1, "x", Map.of(), null, null),
+                null, null, null, null, null, null, active::get);
+        bridge.add(module, event, what -> false);
+        assertTrue(event.invoker().allow("before handshake"));
+        active.set(true);
+        assertFalse(event.invoker().allow("SDK server"));
+        active.set(false);
+        assertTrue(event.invoker().allow("disconnect before cleanup"));
+        bridge.remove(module);
     }
 
     @Test

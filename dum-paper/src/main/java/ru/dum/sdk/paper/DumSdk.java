@@ -70,7 +70,7 @@ public final class DumSdk extends JavaPlugin implements ModuleHost, PluginMessag
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        modules = new ModuleManager<>(this, List.of(new HandshakeModule(this), new AccessoriesModule(this)));
+        modules = new ModuleManager<>(this, List.of(new HandshakeModule(this)));
         modules.enableAll();
 
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> event.registrar().register(Commands.literal("dumsdk")

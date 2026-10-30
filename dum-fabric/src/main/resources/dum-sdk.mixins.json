@@ -6,7 +6,11 @@
 		"ClientPacketListenerMixin",
 		"ConnectionMixin",
 		"ListenerAndPacketMixin",
-		"MinecraftMixin"
+		"MinecraftMixin",
+		"WingsLayerMixin",
+		"HumanoidArmorLayerMixin",
+		"ItemModelResolverMixin",
+		"ItemStackMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

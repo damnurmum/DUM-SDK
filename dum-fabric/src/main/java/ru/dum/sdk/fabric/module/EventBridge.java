@@ -72,7 +72,7 @@ final class EventBridge {
 
         synchronized void add(RunningModule module, T listener) {
             T guarded = proxy(type, (method, args) -> {
-                if (module.failed) return forward(method, neutral, args);
+                if (!module.active()) return forward(method, neutral, args);
                 long start = System.nanoTime();
                 try {
                     return method.invoke(listener, args);

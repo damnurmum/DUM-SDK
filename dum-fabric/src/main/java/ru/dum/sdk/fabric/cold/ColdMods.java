@@ -13,6 +13,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.dum.sdk.network.Signing;
+import ru.dum.sdk.network.ServerModContract;
 
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -28,6 +29,7 @@ import java.util.Optional;
 import java.util.TreeSet;
 import java.util.stream.Stream;
 import java.util.zip.ZipFile;
+import java.util.function.BooleanSupplier;
 
 /**
  * Whole Fabric mods from the server (cold load). They live in mods/ as {@code dum-cold-<id>.jar}; Fabric loads
@@ -56,16 +58,22 @@ public final class ColdMods {
     /**
      * Compares the catalog with the mods this game runs and, if they differ, plans the change for after exit.
      *
-     * @return ids of the mods that change on restart; empty when the game already runs exactly these
+     * @return ids that require a restart before joining; inactive compliant mods may be removed after a later exit
      * @throws IllegalStateException with the reason to show the player when a mod cannot be installed
      */
-    public List<String> sync(List<Mod> wanted) throws IOException {
+    public synchronized List<String> sync(List<Mod> wanted, BooleanSupplier current) throws IOException {
+        if (!current.getAsBoolean()) return List.of();
         Map<String, String> versions = new HashMap<>();
         Map<String, JsonObject> metadata = new HashMap<>();
         for (Mod mod : wanted) {
             JsonObject json = fabricModJson(mod.jar);
             if (!mod.id.equals(string(json, "id")) || !mod.version.equals(string(json, "version"))) {
                 throw new IllegalStateException("мод " + mod.id + ": в файле другой мод (" + string(json, "id") + " " + string(json, "version") + ")");
+            }
+            try {
+                ServerModContract.entrypoint(json);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException("мод " + mod.id + " не поддерживает работу только на своем сервере: нужен контракт dum-sdk:server", e);
             }
             versions.put(mod.id, mod.version);
             metadata.put(mod.id, json);
@@ -81,11 +89,13 @@ public final class ColdMods {
 
         List<String> operations = new ArrayList<>();
         TreeSet<String> changed = new TreeSet<>();
+        TreeSet<String> restart = new TreeSet<>();
         for (Mod mod : wanted) {
             Path target = mods.resolve(PREFIX + mod.id + ".jar");
             if (!running(mod, target)) {
                 operations.add("copy\t" + mod.jar.toAbsolutePath() + "\t" + target.toAbsolutePath());
                 changed.add(mod.id);
+                restart.add(mod.id);
             }
         }
         // Cold mods the server no longer has: files left in mods/ and mods still running from such files
@@ -101,16 +111,26 @@ public final class ColdMods {
             }
         }
         for (ModContainer container : FabricLoader.getInstance().getAllMods()) {
-            if (isCold(container) && !versions.containsKey(container.getMetadata().getId())) changed.add(container.getMetadata().getId());
+            if (isCold(container) && !versions.containsKey(container.getMetadata().getId())) {
+                String id = container.getMetadata().getId();
+                changed.add(id);
+                // Legacy mods cannot be suspended. A compliant mod absent from this catalog simply stays inactive.
+                try {
+                    ServerModContract.entrypoint(fabricModJson(container.getOrigin().getPaths().getFirst()));
+                } catch (IllegalArgumentException e) {
+                    restart.add(id);
+                }
+            }
         }
 
+        if (!current.getAsBoolean()) return List.of();
         Files.writeString(plan, String.join("\n", operations), StandardCharsets.UTF_8);
         pending = List.copyOf(changed);
         if (!operations.isEmpty()) {
             LOG.info("Fabric mods change on restart: {}", operations);
             startHelper();
         }
-        return List.copyOf(changed);
+        return List.copyOf(restart);
     }
 
     public List<String> pending() {
@@ -148,6 +168,9 @@ public final class ColdMods {
         if (!json.has("depends")) return;
         for (Map.Entry<String, JsonElement> dependency : json.getAsJsonObject("depends").entrySet()) {
             String other = dependency.getKey();
+            if (!catalog.containsKey(other) && FabricLoader.getInstance().getModContainer(other).filter(ColdMods::isCold).isPresent()) {
+                throw new IllegalStateException("мод " + id + " требует " + other + ", а сервер не включил его в каталог");
+            }
             String installed = catalog.containsKey(other) ? catalog.get(other)
                     : FabricLoader.getInstance().getModContainer(other).map(c -> c.getMetadata().getVersion().getFriendlyString()).orElse(null);
             if (installed == null) throw new IllegalStateException("мод " + id + " требует " + other + ", а его нет");

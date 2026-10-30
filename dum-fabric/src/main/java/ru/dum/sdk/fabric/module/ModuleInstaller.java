@@ -23,8 +23,9 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 
 /**
@@ -42,7 +43,8 @@ public final class ModuleInstaller {
     private final Path versionsFile;
     private final Consumer<Message> send;
     private final ColdMods coldMods;
-    private final Function<List<Path>, CompletableFuture<?>> installed;
+    private final BiFunction<List<Path>, List<ColdMods.Mod>, CompletableFuture<?>> installed;
+    private final BooleanSupplier current;
     /** Dev-signed modules run only in a development client; -Ddumsdk.release=true turns that off for testing. */
     private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
 
@@ -66,17 +68,20 @@ public final class ModuleInstaller {
 
     /**
      * @param send      sends a message to the server
-     * @param installed gets the jars of the whole catalog once they are all in place; READY waits for it
+     * @param installed gets hot jars and verified cold mods once they are all in place; READY waits for it
      */
-    public ModuleInstaller(Path root, Consumer<Message> send, Function<List<Path>, CompletableFuture<?>> installed) {
+    public ModuleInstaller(Path root, ColdMods coldMods, Consumer<Message> send, BiFunction<List<Path>, List<ColdMods.Mod>, CompletableFuture<?>> installed,
+                           BooleanSupplier current) {
         this.cache = root.resolve("cache");
         this.versionsFile = root.resolve("versions.properties");
-        this.coldMods = new ColdMods(root);
+        this.coldMods = coldMods;
         this.send = send;
         this.installed = installed;
+        this.current = current;
     }
 
     public void catalog(List<Message.ModuleInfo> modules) {
+        if (!current.getAsBoolean()) return;
         catalog = modules;
         downloads.clear();
         total = 0;
@@ -103,6 +108,7 @@ public final class ModuleInstaller {
     }
 
     public void chunk(Message.Chunk chunk) {
+        if (!current.getAsBoolean()) return;
         Download download = downloads.get(Signing.hex(chunk.sha256()));
         if (download == null) return;
         String id = download.info.id();
@@ -139,6 +145,7 @@ public final class ModuleInstaller {
     }
 
     private void finish() {
+        if (!current.getAsBoolean()) return;
         List<Path> jars = new ArrayList<>();
         List<ColdMods.Mod> fabricMods = new ArrayList<>();
         Properties versions = loadVersions();
@@ -168,7 +175,7 @@ public final class ModuleInstaller {
         total = 0;
         List<String> restart;
         try {
-            restart = coldMods.sync(fabricMods);
+            restart = coldMods.sync(fabricMods, current);
         } catch (IllegalStateException e) {
             fail(e.getMessage());
             return;
@@ -177,6 +184,7 @@ public final class ModuleInstaller {
             fail("не удалось подготовить моды: " + e.getMessage());
             return;
         }
+        if (!current.getAsBoolean()) return;
         // Only now is everything installed; a failed attempt must not raise the bar for older versions
         try (Writer writer = Files.newBufferedWriter(versionsFile)) {
             versions.store(writer, "Highest installed version of every DUM-SDK module");
@@ -188,7 +196,8 @@ public final class ModuleInstaller {
             send.accept(new Message.Restart(restart));
             return;
         }
-        installed.apply(jars).whenComplete((result, error) -> {
+        installed.apply(jars, fabricMods).whenComplete((result, error) -> {
+            if (!current.getAsBoolean()) return;
             Throwable cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
             if (cause instanceof ModuleStartException refused) {
                 LOG.warn("Modules not started: {}", refused.getMessage());

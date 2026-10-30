@@ -3,6 +3,8 @@
 What has not been verified yet, or was verified only on the macOS laptop with a local test server.
 Tick an item once it has been checked on the real setup, and note anything odd next to it.
 
+Historical checks used local SDK build labels from 0.14.x through 0.17.0 before release 0.14.0 was prepared. Those labels identify the builds tested, not separate published releases. The accumulated SDK changes are released together as 0.14.0; ordinary development does not increase the release version.
+
 ## Windows PC
 
 - [x] `./gradlew build` works on Windows (with `dumCorePath` in `%USERPROFILE%\.gradle\gradle.properties`). Checked 2026-10-27, `dum-paper` included.
@@ -22,6 +24,26 @@ Tick an item once it has been checked on the real setup, and note anything odd n
 ## macOS laptop
 
 - [x] `./gradlew :dum-fabric:runClient -Pjoin=localhost` joined the local Paper server on 2026-10-30. The client connected to DUM-SDK 0.14.2 and started `info` 0.4.1 and `sdktest` 0.3.0.
+
+## Session-scoped runtime (0.14.0)
+
+- [x] `./gradlew build` passes on macOS. Unit tests reject catalogs before WELCOME, incompatible and duplicate handshakes, and completion callbacks from an old connection. Registered Fabric listeners are passive when the connection is inactive. Checked on 2026-10-30.
+- [x] The real client game test joins local SDK Paper, receives a tagged vanilla item from the external Paper fixture, and checks the active module's item name/model and wings/armor callbacks without mutating the carrier. Checked on 2026-10-30.
+- [x] An optional module's failure removes its definitions and equipment callbacks. Rejoining restores a fresh healthy session; leaving removes its effects. Checked on 2026-10-30.
+- [x] `./gradlew :dum-fabric:runClientGameTest -PtestServer=localhost:25565 -PplainServer=localhost:25566` passes. On the second Paper server, with no plugins, the SDK session stays inactive, cached modules do not start, and item/equipment presentation falls back to vanilla. Checked on 2026-10-30.
+- [ ] Visually inspect hot wings/armor rendering, custom model assets and compatibility with Sodium/Iris and other mods. This run checked API results and successful mixin initialization, not a visual comparison.
+- [ ] Repeat the 0.14.0 runtime session checks on Windows and Linux, and manually enter singleplayer after leaving an SDK server.
+
+## Server-scoped Fabric mods (0.14.0)
+
+- [x] `./gradlew build :dum-fabric:compileGametestJava` passes on macOS. Shared contract tests reject legacy/missing/ambiguous entrypoints, startup initializers and a missing SDK dependency. Checked on 2026-10-30.
+- [x] First install of external `dumcoldtest` 0.4.0 through local Paper: the client requests restart without activating the mod; after exit the helper installs its jar and reports `done`. Checked on 2026-10-30 with `-PcoldInstallTest` and a persistent external game directory.
+- [x] The real cold title mixin activates only on its accepted catalog; a second SDK server with an empty catalog joins without a forced restart and keeps it inactive. Checked on 2026-10-30 with `-PcoldTest -PotherSdkServer=localhost:25567`.
+- [x] The same loaded mod stays passive on a Paper server with no plugins and in a newly created singleplayer world. Its managed tick count does not advance there. Checked on 2026-10-30.
+- [x] Reconnect creates a fresh context; the old context stays inactive and refuses late registrations. Leave and intentional required-mod failure call disable and cleanup once; failure disconnects the player. Checked on 2026-10-30.
+- [x] `./gradlew build :dum-fabric:runClientGameTest -PtestServer=localhost:25565 -PplainServer=localhost:25566` still passes with the hot fixtures and no cold mod in the catalog. Checked on 2026-10-30 after the cold lifecycle changes.
+- [ ] Repeat the 0.14.0 cold session/install checks on Windows and Linux; test Sodium/Iris compatibility.
+- [ ] Validate a real cold mod with native registry entries. The integration fixture checks a mixin and managed lifecycle, not removal of native registrations or global Fabric assets (those remain loaded).
 
 ## Release signing key
 
@@ -64,13 +86,6 @@ Checked on the Mac only in a dev client against a fake release (download, signat
 - [ ] Download over the real network: the progress bar shows, a few MB of modules arrive well within `install-timeout-seconds` (120).
 - [ ] `messages.yml` on the VDS is old: the new texts (install errors, restart) still show, taken from the jar.
 - [ ] The daily 03:00 restart: players rejoin without new downloads (modules come from the cache).
-
-## Gameplay of the `info` demo
-
-- [x] Accessory slots: a compass and a clock go in, other items are refused. Checked by the author 2026-10-27; swapping with the cursor item not reported.
-- [x] Death without keepInventory: the compass and the clock from the slots drop with the rest; with keepInventory they stay. Checked by the author 2026-10-27.
-- [x] The slots keep their items across rejoins (checked 2026-10-27) and server restarts. Checked on 2026-10-30 with the local Paper server and DUM-SDK 0.14.2: the author reconnected in the same client after a server restart, and both items and their information lines remained.
-- [x] The death flag shows over the last death point and moves after a new death. Checked by the author after two deaths on the local server on 2026-10-30. It was hidden in the Nether and visible again after returning to the Overworld.
 
 ## Open questions
 

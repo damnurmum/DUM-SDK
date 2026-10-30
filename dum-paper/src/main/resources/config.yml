@@ -19,8 +19,3 @@ module-messages:
 # Client modules only operators get (module ids). Everyone else never receives the module, cannot download it,
 # and its server side neither hears from nor sends to them.
 ops-only: []
-
-# Server side of the "info" client module: accessory slots for a compass and a clock next to the inventory.
-# The items are kept in the player's data and drop on death like the rest of the inventory.
-accessories:
-  enabled: true

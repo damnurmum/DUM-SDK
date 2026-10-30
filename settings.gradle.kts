@@ -15,7 +15,7 @@ plugins {
 
 rootProject.name = "DUM-SDK"
 
-include("dum-network", "dum-fabric", "dum-example-module", "dum-test-module", "dum-cold-test")
+include("dum-network", "dum-fabric")
 
 // DUM-Core is not public. The server plugin is built only where dumCorePath
 // (set in ~/.gradle/gradle.properties) points at a DUM-Core checkout.

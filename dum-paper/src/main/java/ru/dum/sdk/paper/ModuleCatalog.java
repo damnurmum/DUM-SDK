@@ -6,6 +6,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Signing;
+import ru.dum.sdk.network.ServerModContract;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -66,6 +67,14 @@ final class ModuleCatalog {
                 if (manifest == null) {
                     log.warn("Module {} has neither dum-module.json nor fabric.mod.json, not offered", jar.getFileName());
                     continue;
+                }
+                if (manifest.fabricMod) {
+                    try {
+                        ServerModContract.entrypoint(manifest.json);
+                    } catch (IllegalArgumentException e) {
+                        log.warn("Fabric mod {} is not server-scoped: {}, not offered", jar.getFileName(), e.getMessage());
+                        continue;
+                    }
                 }
                 String id = manifest.json.get("id").getAsString();
                 String version = manifest.json.get("version").getAsString();
