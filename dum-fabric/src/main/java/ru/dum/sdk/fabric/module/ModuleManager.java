@@ -26,6 +26,7 @@ import org.slf4j.LoggerFactory;
 import ru.dum.sdk.api.DumModule;
 import ru.dum.sdk.api.DumServerMod;
 import ru.dum.sdk.fabric.cold.ColdMods;
+import ru.dum.sdk.fabric.DumSdkClient;
 import ru.dum.sdk.network.ServerModContract;
 import ru.dum.sdk.api.ScreenLayer;
 import ru.dum.sdk.api.EquipmentRenderLayer;
@@ -73,7 +74,7 @@ public final class ModuleManager {
     private final ModulePacks packs = new ModulePacks();
     private final ModuleKeys keys;
     private final EventBridge events = new EventBridge(this::fail);
-    /** What went wrong with modules this game session, for /sdk. */
+    /** What went wrong with modules this game session, for the diagnostics screen. */
     private final List<Failure> failures = new CopyOnWriteArrayList<>();
 
     /** A module that was turned off because it threw. */
@@ -420,6 +421,7 @@ public final class ModuleManager {
         module.failed = true;
         LOG.error("Module {} failed in {}, turning it off", module.id(), where, error);
         failures.add(new Failure(module.id(), where, error.toString(), LocalTime.now().withNano(0)));
+        DumSdkClient.recordError("MODULE_RUNTIME", module.id() + " (" + where + "): " + error);
         Minecraft minecraft = Minecraft.getInstance();
         minecraft.execute(() -> {
             if (!running.contains(module)) return;
@@ -431,7 +433,7 @@ public final class ModuleManager {
                 return;
             }
             SystemToast.add(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                    Component.literal("DUM-SDK: модуль " + module.id() + " выключен"), Component.literal("Ошибка в модуле, подробнее: /sdk"));
+                    Component.literal("DUM-SDK: модуль " + module.id() + " выключен"), Component.literal("Подробнее: Настройки > Диагностика DUM-SDK"));
         });
     }
 

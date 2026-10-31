@@ -65,7 +65,7 @@ The client accepts a catalog only after a compatible WELCOME on that same connec
 
 Unless stated otherwise, callbacks run on the render thread.
 
-A module that throws anywhere the SDK calls it is turned off and `/sdk` shows the error. If it is required (or a required module depends on it), the player is disconnected from the server; otherwise the player gets a toast and the other modules keep running.
+A module that throws anywhere the SDK calls it is turned off and the diagnostics screen in Settings shows the error (`/sdk` opens it). If it is required (or a required module depends on it), the player is disconnected from the server; otherwise the player gets a toast and the other modules keep running.
 
 ### DumContext
 
@@ -185,7 +185,7 @@ The Paper plugin is standalone starting with 0.14.1: build it without DUM-Core o
 - `-Prelease` makes the dev client refuse dev-signed modules, like a player's client.
 - `-Psodium`, `-Piris` add Sodium and Iris; shader packs go into `dum-fabric/run/shaderpacks`.
 - The external `DUM-SDK-Examples` projects provide `sdktest` for rendering, events, packets and failures, and `dumcoldtest` for cold load. The SDK game test requires the external `info` and `sdktest` 0.4.0+ jars and `DUM-Runtime-Test` Paper fixture on its test server.
-- `/sdk` in game: modules, time they take, Fabric mods from the server, pending restarts, failures.
+- Settings > DUM-SDK diagnostics (`/sdk` shortcut, unreleased): modules, time they take, Fabric mods from the server, pending restarts, updater status, persistent error codes and local crash/log files.
 - `./gradlew :dum-fabric:runClientGameTest` joins a running test server and checks the SDK end to end; a module's own checks can follow the same pattern (`dum-fabric/src/gametest`).
 - Add `-PplainServer=localhost:25566` with a second Paper server without plugins to check that session effects remain off after switching from the SDK server to an ordinary one.
 

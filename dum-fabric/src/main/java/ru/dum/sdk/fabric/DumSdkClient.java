@@ -30,6 +30,9 @@ import ru.dum.sdk.fabric.module.ModuleInstaller;
 import ru.dum.sdk.fabric.module.ModuleManager;
 import ru.dum.sdk.fabric.module.ConnectionSession;
 import ru.dum.sdk.fabric.update.SdkUpdater;
+import ru.dum.sdk.fabric.update.UpdateStatus;
+import ru.dum.sdk.fabric.diagnostics.DiagnosticLog;
+import ru.dum.sdk.fabric.diagnostics.DiagnosticsScreen;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.ProtocolException;
 import ru.dum.sdk.network.ErrorCode;
@@ -56,6 +59,8 @@ public final class DumSdkClient implements ClientModInitializer {
     private static final ConnectionSession SESSION = new ConnectionSession();
     private static final ModuleManager MODULES = new ModuleManager(ROOT, SESSION::active);
     private static final SdkUpdater UPDATER = new SdkUpdater(ROOT, VERSION);
+    private static final DiagnosticLog DIAGNOSTICS = new DiagnosticLog(ROOT.resolve("diagnostics.json"));
+    private static final SystemToast.SystemToastId UPDATE_TOAST = new SystemToast.SystemToastId(10_000);
     private static final ColdMods COLD_MODS = new ColdMods(ROOT);
     private record Attempt(PacketContext owner, long generation, ClientConfigurationPacketListenerImpl listener,
                            ModuleInstaller installer) { }
@@ -89,9 +94,7 @@ public final class DumSdkClient implements ClientModInitializer {
             if (SESSION.owns(listener.getPacketContext())) disconnected(client);
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(DumSdkClient::disconnected);
-        ClientLifecycleEvents.CLIENT_STARTED.register(client -> UPDATER.checkInBackground(version -> client.execute(() ->
-                SystemToast.add(client.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                        Component.literal("DUM-SDK " + version + " загружен"), Component.literal("Установится после перезапуска игры")))));
+        ClientLifecycleEvents.CLIENT_STARTED.register(client -> checkUpdates());
 
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             if (screen instanceof PauseScreen pause && pause.showsPauseMenu()) {
@@ -102,7 +105,7 @@ public final class DumSdkClient implements ClientModInitializer {
         });
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) ->
                 dispatcher.register(ClientCommands.literal("sdk").executes(context -> {
-                    report().forEach(context.getSource()::sendFeedback);
+                    Minecraft.getInstance().execute(() -> openDiagnostics(null));
                     return 1;
                 })));
         LOG.info("DUM-SDK {} (protocol {})", VERSION, Protocol.VERSION);
@@ -137,7 +140,11 @@ public final class DumSdkClient implements ClientModInitializer {
         });
         ModuleInstaller installer = new ModuleInstaller(ROOT, COLD_MODS,
                 message -> {
-                    if (SESSION.current(generation)) listener.send(new ServerboundCustomPayloadPacket(new SdkPayload(Protocol.encode(message))));
+                    if (!SESSION.current(generation)) return;
+                    if (message instanceof Message.Ready ready && ready.code() != ErrorCode.OK) {
+                        recordError(ready.code().name(), "Модуль: " + ready.module() + ". " + ready.detail());
+                    }
+                    listener.send(new ServerboundCustomPayloadPacket(new SdkPayload(Protocol.encode(message))));
                 },
                 (jars, mods) -> CompletableFuture.supplyAsync(() -> {
                     if (!SESSION.current(generation)) return CompletableFuture.<Void>failedFuture(new CancellationException());
@@ -147,12 +154,13 @@ public final class DumSdkClient implements ClientModInitializer {
         attempt = new Attempt(listener.getPacketContext(), generation, listener, installer);
     }
 
-    /** /sdk: what runs, how much time it takes and what went wrong. */
-    private static List<Component> report() {
+    /** Read on the client thread; file contents and player chat are excluded from the copyable summary. */
+    public static List<Component> diagnosticsReport() {
         List<Component> lines = new ArrayList<>();
         String server = serverVersion;
+        String connection = SESSION.active() ? "подключено" : server != null ? "установка модулей" : attempt != null ? "рукопожатие" : "не подключено";
         lines.add(Component.literal("DUM-SDK " + VERSION).withStyle(ChatFormatting.GOLD)
-                .append(Component.literal(server != null ? " · сервер " + server : " · не подключено").withStyle(ChatFormatting.GRAY)));
+                .append(Component.literal(" · " + connection + (server != null ? " · сервер " + server : "")).withStyle(ChatFormatting.GRAY)));
         if (MODULES.safeMode()) {
             lines.add(Component.literal("Безопасный режим: игра закрылась с ошибкой, модули выключены до перезапуска").withStyle(ChatFormatting.YELLOW));
         }
@@ -167,11 +175,20 @@ public final class DumSdkClient implements ClientModInitializer {
             lines.add(Component.literal("Моды с сервера: ").withStyle(ChatFormatting.GRAY)
                     .append(Component.literal(String.join(", ", fabricMods)).withStyle(ChatFormatting.WHITE)));
         }
-        String update = UPDATER.pending();
-        if (update != null) {
-            lines.add(Component.literal("DUM-SDK " + update + " установится после перезапуска").withStyle(ChatFormatting.YELLOW));
-        }
+        UpdateStatus update = UPDATER.status();
+        lines.add(Component.literal("Обновление: " + update.title()).withStyle(ChatFormatting.GOLD));
+        lines.add(Component.literal(update.message()).withStyle(ChatFormatting.GRAY));
+        lines.add(Component.literal("Протокол: " + Protocol.VERSION + ", API модулей: " + ModuleManager.API_VERSION).withStyle(ChatFormatting.GRAY));
+        lines.add(Component.literal("Minecraft: " + FabricLoader.getInstance().getModContainer("minecraft").orElseThrow().getMetadata().getVersion().getFriendlyString()
+                + ", Fabric Loader: " + FabricLoader.getInstance().getModContainer("fabricloader").orElseThrow().getMetadata().getVersion().getFriendlyString()).withStyle(ChatFormatting.GRAY));
+        lines.add(Component.literal("Java: " + System.getProperty("java.version") + ", " + System.getProperty("os.name") + " " + System.getProperty("os.arch")).withStyle(ChatFormatting.GRAY));
+        Runtime runtime = Runtime.getRuntime();
+        lines.add(Component.literal("Память JVM: " + (runtime.totalMemory() - runtime.freeMemory()) / 1048576 + " / " + runtime.maxMemory() / 1048576
+                + " МБ, модов Fabric: " + FabricLoader.getInstance().getAllMods().size()).withStyle(ChatFormatting.GRAY));
         Attempt current = attempt;
+        if (current != null && current.installer.progress() >= 0) {
+            lines.add(Component.literal("Загрузка модулей: " + current.installer.progressText()).withStyle(ChatFormatting.YELLOW));
+        }
         List<String> pending = current == null ? List.of() : current.installer.pendingRestart();
         if (!pending.isEmpty()) {
             lines.add(Component.literal("После перезапуска изменятся: " + String.join(", ", pending)).withStyle(ChatFormatting.YELLOW));
@@ -181,6 +198,31 @@ public final class DumSdkClient implements ClientModInitializer {
                     .append(Component.literal(failure.error()).withStyle(ChatFormatting.GRAY)));
         }
         return lines;
+    }
+
+    public static DiagnosticLog diagnosticLog() { return DIAGNOSTICS; }
+    public static SdkUpdater updater() { return UPDATER; }
+
+    public static void openDiagnostics(@Nullable Screen parent) {
+        Minecraft.getInstance().gui.setScreen(new DiagnosticsScreen(parent));
+    }
+
+    public static void checkUpdates() {
+        UPDATER.checkInBackground(status -> {
+            if (!status.errorCode().isEmpty()) recordError(status.errorCode(), status.message());
+            Minecraft client = Minecraft.getInstance();
+            client.execute(() -> SystemToast.addOrUpdate(client.gui.toastManager(), UPDATE_TOAST,
+                    Component.literal(status.title()), Component.literal(status.message())));
+        });
+    }
+
+    public static void recordError(String code, String message) { DIAGNOSTICS.record(code, message); }
+
+    public static void recordDisconnect(Component reason) {
+        String text = reason.getString();
+        if (!text.contains("DUM-SDK")) return;
+        var matcher = java.util.regex.Pattern.compile("Код: ([A-Z][A-Z0-9_]{1,63})").matcher(text);
+        if (matcher.find()) recordError(matcher.group(1), text);
     }
 
     /**

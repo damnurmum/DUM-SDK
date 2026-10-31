@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import ru.dum.sdk.api.ServerSession;
+import ru.dum.sdk.fabric.diagnostics.DiagnosticsScreen;
 
 /** Run against Paper with only DUM-SDK, an empty catalog and an operator test player. No external fixtures. */
 final class StandalonePaperGameTest {
@@ -26,6 +27,10 @@ final class StandalonePaperGameTest {
                 check(DumSdkClient.modules().status().isEmpty(), "empty catalog needs no gameplay fixtures");
                 client.player.connection.sendCommand("dumsdk");
             });
+            context.runOnClient(client -> client.player.connection.sendCommand("sdk"));
+            context.waitFor(client -> client.gui.screen() instanceof DiagnosticsScreen, TIMEOUT);
+            context.runOnClient(client -> check(ServerSession.active(), "diagnostics shortcut preserves the active server session"));
+            context.setScreen(() -> null);
             if (attempt < 2) {
                 context.runOnClient(client -> client.player.connection.sendCommand("dumsdk reload"));
                 context.waitFor(client -> client.gui.screen() instanceof DisconnectedScreen, TIMEOUT);

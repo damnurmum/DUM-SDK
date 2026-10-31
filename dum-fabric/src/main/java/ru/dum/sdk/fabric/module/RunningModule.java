@@ -53,7 +53,7 @@ final class RunningModule implements DumContext {
     volatile @Nullable Consumer<byte[]> serverHandler;
     final Map<KeyMapping, Runnable> keys = new ConcurrentHashMap<>();
     final List<Entity> entities = new CopyOnWriteArrayList<>();
-    /** Time spent in this module's code, for /sdk. */
+    /** Time spent in this module's code, for the diagnostics screen. */
     final AtomicLong nanos = new AtomicLong();
     final long startedAt = System.nanoTime();
     /** Threw and is being turned off: gets no more calls. */

@@ -48,7 +48,7 @@ public final class ColdMods {
     private final Path mods = FabricLoader.getInstance().getGameDir().resolve("mods");
     private final Path plan;
     private boolean helperStarted;
-    /** Mods that change on the next restart, for /sdk. */
+    /** Mods that change on the next restart, for the diagnostics screen. */
     private volatile List<String> pending = List.of();
 
     public ColdMods(Path root) {

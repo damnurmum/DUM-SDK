@@ -10,16 +10,27 @@ import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import ru.dum.sdk.fabric.update.SdkUpdater;
+import ru.dum.sdk.fabric.DumSdkClient;
 
 /** Add a download action only when the disconnect reason points to the SDK releases. */
 @Mixin(DisconnectedScreen.class)
 abstract class DisconnectedScreenMixin {
     @Shadow @Final private LinearLayout layout;
     @Shadow @Final private DisconnectionDetails details;
+    @Unique private boolean dumsdk$recorded;
+
+    @Inject(method = "init", at = @At("HEAD"))
+    private void dumsdk$rememberFailure(CallbackInfo ci) {
+        if (!dumsdk$recorded) {
+            dumsdk$recorded = true;
+            DumSdkClient.recordDisconnect(details.reason());
+        }
+    }
 
     // The third child in 26.2 init is the return button. Join the vanilla layout before it is arranged.
     @Inject(method = "init", at = @At(value = "INVOKE",
