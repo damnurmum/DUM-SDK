@@ -55,6 +55,7 @@ Build the SDK jar first (`./gradlew :dum-fabric:jar` in the SDK checkout). The p
 - `version`: semantic version. Clients never go back to an older version of a module they have run, so publish fixes as new versions.
 - `apiVersion`: the SDK API the module is built for (`ModuleManager.API_VERSION`, now 1).
 - `dependencies`: other modules, with Fabric version predicates. Dependencies start first and stop last.
+- `name`, `description`, `authors` (optional, unreleased menu): display name, description string and an array of author names for the DUM-SDK Modifications page. Omitted names fall back to `id`; missing descriptions/authors are not invented. Unsupported presentation shapes are ignored and do not stop an otherwise valid legacy module. Descriptions are displayed verbatim, so use the language intended for players.
 - `required` (default `true`): without the module the player would play by other rules. If it does not start, the server refuses the join; if it fails in game, the player is disconnected with the reason. Set `false` only for modules that change nothing in the game, such as pure cosmetics.
 
 ### Lifecycle and threads
@@ -65,7 +66,7 @@ The client accepts a catalog only after a compatible WELCOME on that same connec
 
 Unless stated otherwise, callbacks run on the render thread.
 
-A module that throws anywhere the SDK calls it is turned off and the diagnostics screen in Settings shows the error (`/sdk` opens it). If it is required (or a required module depends on it), the player is disconnected from the server; otherwise the player gets a toast and the other modules keep running.
+A module that throws anywhere the SDK calls it is turned off and the Errors tab in Settings > DUM-SDK shows the error (`/sdk` opens the menu). If it is required (or a required module depends on it), the player is disconnected from the server; otherwise the player gets a toast and the other modules keep running.
 
 ### DumContext
 
@@ -185,7 +186,7 @@ The Paper plugin is standalone starting with 0.14.1: build it without DUM-Core o
 - `-Prelease` makes the dev client refuse dev-signed modules, like a player's client.
 - `-Psodium`, `-Piris` add Sodium and Iris; shader packs go into `dum-fabric/run/shaderpacks`.
 - The external `DUM-SDK-Examples` projects provide `sdktest` for rendering, events, packets and failures, and `dumcoldtest` for cold load. The SDK game test requires the external `info` and `sdktest` 0.4.0+ jars and `DUM-Runtime-Test` Paper fixture on its test server.
-- Settings > DUM-SDK diagnostics (`/sdk` shortcut, unreleased): modules, time they take, Fabric mods from the server, pending restarts, updater status, persistent error codes and local crash/log files.
+- Settings > DUM-SDK (`/sdk` shortcut, unreleased): modules, time they take, Fabric mods from the server, pending restarts, updater status, persistent error codes and local crash/log files.
 - `./gradlew :dum-fabric:runClientGameTest` joins a running test server and checks the SDK end to end; a module's own checks can follow the same pattern (`dum-fabric/src/gametest`).
 - Add `-PplainServer=localhost:25566` with a second Paper server without plugins to check that session effects remain off after switching from the SDK server to an ordinary one.
 

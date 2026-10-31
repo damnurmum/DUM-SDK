@@ -58,6 +58,14 @@ loom {
     }
     runs.matching { it.name == "clientGameTest" }.configureEach {
         vmArg("-Ddumsdk.testServer=${findProperty("testServer") ?: "localhost"}")
+        if (project.hasProperty("hubTest")) {
+            vmArg("-Ddumsdk.hubTest=true")
+            if (project.hasProperty("hubApi")) {
+                val endpoint = project.property("hubApi").toString()
+                vmArgs("-Ddumsdk.updateTest=true", "-Ddumsdk.updateUrl=$endpoint/latest",
+                    "-Ddumsdk.releasesUrl=$endpoint/releases?page=", "-Ddumsdk.hubApi=$endpoint")
+            }
+        }
         if (project.hasProperty("plainServer")) vmArg("-Ddumsdk.plainServer=${project.property("plainServer")}")
         if (project.hasProperty("downloadTest")) vmArg("-Ddumsdk.downloadTest=true")
         if (project.hasProperty("standaloneTest")) vmArg("-Ddumsdk.standaloneTest=true")

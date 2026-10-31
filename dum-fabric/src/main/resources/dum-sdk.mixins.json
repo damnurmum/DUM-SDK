@@ -9,6 +9,7 @@
 		"MinecraftMixin",
 		"DisconnectedScreenMixin",
 		"OptionsScreenMixin",
+		"PauseScreenMixin",
 		"WingsLayerMixin",
 		"HumanoidArmorLayerMixin",
 		"ItemModelResolverMixin",

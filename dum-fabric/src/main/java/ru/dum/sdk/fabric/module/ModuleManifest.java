@@ -2,6 +2,7 @@ package ru.dum.sdk.fabric.module;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import org.jspecify.annotations.Nullable;
@@ -12,6 +13,7 @@ import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
@@ -25,7 +27,17 @@ import java.util.zip.ZipFile;
  *                     false only for modules that change nothing in the game, such as pure cosmetics
  */
 record ModuleManifest(String id, String version, int apiVersion, String entrypoint,
-                      @Nullable Map<String, String> dependencies, @Nullable String loadMode, @Nullable Boolean required) {
+                      @Nullable Map<String, String> dependencies, @Nullable String loadMode, @Nullable Boolean required,
+                      @Nullable String name, @Nullable String description, @Nullable List<String> authors) {
+
+    ModuleManifest(String id, String version, int apiVersion, String entrypoint,
+                   @Nullable Map<String, String> dependencies, @Nullable String loadMode, @Nullable Boolean required) {
+        this(id, version, apiVersion, entrypoint, dependencies, loadMode, required, null, null, null);
+    }
+
+    String displayName() { return name == null || name.isBlank() ? id : name; }
+    String descriptionText() { return description == null ? "" : description; }
+    List<String> authorNames() { return authors == null ? List.of() : authors.stream().filter(java.util.Objects::nonNull).toList(); }
 
     static final String FILE = "dum-module.json";
 
@@ -36,9 +48,23 @@ record ModuleManifest(String id, String version, int apiVersion, String entrypoi
             ZipEntry entry = zip.getEntry(FILE);
             if (entry == null) throw new IOException("no " + FILE);
             try (Reader reader = new InputStreamReader(zip.getInputStream(entry), StandardCharsets.UTF_8)) {
-                manifest = new Gson().fromJson(reader, ModuleManifest.class);
+                var json = JsonParser.parseReader(reader).getAsJsonObject();
+                // Presentation metadata must not prevent a legacy module from starting.
+                for (String field : List.of("name", "description")) {
+                    var value = json.get(field);
+                    if (value != null && (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())) json.remove(field);
+                }
+                var authors = json.get("authors");
+                if (authors != null) {
+                    var names = new com.google.gson.JsonArray();
+                    if (authors.isJsonArray()) for (var author : authors.getAsJsonArray()) {
+                        if (author.isJsonPrimitive() && author.getAsJsonPrimitive().isString()) names.add(author.getAsString());
+                    }
+                    json.add("authors", names);
+                }
+                manifest = new Gson().fromJson(json, ModuleManifest.class);
             }
-        } catch (JsonParseException e) {
+        } catch (JsonParseException | IllegalStateException e) {
             throw new IOException("broken " + FILE + ": " + e.getMessage(), e);
         }
         if (manifest == null || manifest.id == null || !manifest.id.matches("[a-z0-9_-]+")) {

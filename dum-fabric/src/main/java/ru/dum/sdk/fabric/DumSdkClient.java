@@ -31,6 +31,7 @@ import ru.dum.sdk.fabric.module.ModuleManager;
 import ru.dum.sdk.fabric.module.ConnectionSession;
 import ru.dum.sdk.fabric.update.SdkUpdater;
 import ru.dum.sdk.fabric.update.UpdateStatus;
+import ru.dum.sdk.fabric.update.ReleaseCatalog;
 import ru.dum.sdk.fabric.diagnostics.DiagnosticLog;
 import ru.dum.sdk.fabric.diagnostics.DiagnosticsScreen;
 import ru.dum.sdk.network.Message;
@@ -59,6 +60,7 @@ public final class DumSdkClient implements ClientModInitializer {
     private static final ConnectionSession SESSION = new ConnectionSession();
     private static final ModuleManager MODULES = new ModuleManager(ROOT, SESSION::active);
     private static final SdkUpdater UPDATER = new SdkUpdater(ROOT, VERSION);
+    private static final ReleaseCatalog RELEASES = new ReleaseCatalog(ROOT);
     private static final DiagnosticLog DIAGNOSTICS = new DiagnosticLog(ROOT.resolve("diagnostics.json"));
     private static final SystemToast.SystemToastId UPDATE_TOAST = new SystemToast.SystemToastId(10_000);
     private static final ColdMods COLD_MODS = new ColdMods(ROOT);
@@ -202,6 +204,19 @@ public final class DumSdkClient implements ClientModInitializer {
 
     public static DiagnosticLog diagnosticLog() { return DIAGNOSTICS; }
     public static SdkUpdater updater() { return UPDATER; }
+    public static ReleaseCatalog releases() { return RELEASES; }
+    public static String version() { return VERSION; }
+
+    public static List<Message.ModuleInfo> serverCatalog() {
+        Attempt current = attempt;
+        return SESSION.active() && current != null ? current.installer.catalogSnapshot() : List.of();
+    }
+
+    public static List<ModuleManager.Details> moduleDetails() { return SESSION.active() ? MODULES.details() : List.of(); }
+
+    public static void openModifications(@Nullable Screen parent) {
+        if (serverActive()) Minecraft.getInstance().gui.setScreen(new DiagnosticsScreen(parent, DiagnosticsScreen.Tab.MODS));
+    }
 
     public static void openDiagnostics(@Nullable Screen parent) {
         Minecraft.getInstance().gui.setScreen(new DiagnosticsScreen(parent));
@@ -321,7 +336,7 @@ public final class DumSdkClient implements ClientModInitializer {
     private static void drawStatus(Screen screen, GuiGraphicsExtractor graphics) {
         Component status = MODULES.safeMode()
                 ? Component.literal("безопасный режим, модули выключены").withStyle(ChatFormatting.YELLOW)
-                : serverVersion != null
+                : SESSION.active()
                 ? Component.literal("подключено").withStyle(ChatFormatting.GREEN)
                 : Component.literal("не подключено").withStyle(ChatFormatting.GRAY);
         Component line = Component.literal("DUM-SDK " + VERSION + ": ").withStyle(ChatFormatting.GRAY).append(status);

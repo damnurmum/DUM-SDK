@@ -52,7 +52,7 @@ public final class ModuleInstaller {
     /** Dev-signed modules run only in a development client; -Ddumsdk.release=true turns that off for testing. */
     private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
 
-    private List<Message.ModuleInfo> catalog = List.of();
+    private volatile List<Message.ModuleInfo> catalog = List.of();
     private final Map<String, ModuleDownload> downloads = new HashMap<>();
     private enum State { NEW, DOWNLOADING, INSTALLING, COMPLETE, FAILED }
     private volatile State state = State.NEW;
@@ -259,6 +259,8 @@ public final class ModuleInstaller {
     public List<String> pendingRestart() {
         return coldMods.pending();
     }
+
+    public List<Message.ModuleInfo> catalogSnapshot() { return catalog; }
 
     /** Fraction of the current downloads that arrived, or -1 when nothing is downloading. */
     public float progress() {

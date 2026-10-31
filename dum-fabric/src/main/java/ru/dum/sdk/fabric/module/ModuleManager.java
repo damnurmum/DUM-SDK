@@ -84,6 +84,20 @@ public final class ModuleManager {
     /** A running module and how much time its code takes, in milliseconds per second since it started. */
     public record Status(String id, String version, double millisPerSecond) {
     }
+
+    /** Metadata is retained for failed optional entries until the current server session ends. */
+    public record Details(String id, String name, String description, List<String> authors,
+                          Map<String, String> dependencies, int apiVersion, boolean required, boolean active, double millisPerSecond) { }
+
+    public List<Details> details() {
+        Map<String, Status> statuses = status().stream().collect(java.util.stream.Collectors.toMap(Status::id, s -> s));
+        return required.stream().map(manifest -> {
+            Status status = statuses.get(manifest.id());
+            return new Details(manifest.id(), manifest.displayName(), manifest.descriptionText(), manifest.authorNames(),
+                    Map.copyOf(manifest.deps()), manifest.apiVersion(), manifest.isRequired(),
+                    active.getAsBoolean() && status != null, status == null ? 0 : status.millisPerSecond());
+        }).toList();
+    }
     private boolean safeMode;
     /** Every module of the current server, to tell whether a required one has gone. Render thread only. */
     private List<ModuleManifest> required = List.of();
@@ -433,7 +447,7 @@ public final class ModuleManager {
                 return;
             }
             SystemToast.add(minecraft.gui.toastManager(), SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                    Component.literal("DUM-SDK: модуль " + module.id() + " выключен"), Component.literal("Подробнее: Настройки > Диагностика DUM-SDK"));
+                    Component.literal("DUM-SDK: модуль " + module.id() + " выключен"), Component.literal("Подробнее: Настройки > DUM-SDK > Ошибки"));
         });
     }
 

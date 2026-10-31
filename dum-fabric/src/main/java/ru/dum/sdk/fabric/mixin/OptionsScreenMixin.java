@@ -18,7 +18,7 @@ abstract class OptionsScreenMixin {
     @Inject(method = "init", at = @At(value = "INVOKE",
             target = "Lnet/minecraft/client/gui/layouts/HeaderAndFooterLayout;addToContents(Lnet/minecraft/client/gui/layouts/LayoutElement;)Lnet/minecraft/client/gui/layouts/LayoutElement;"))
     private void dumsdk$diagnostics(CallbackInfo ci, @Local GridLayout.RowHelper rows) {
-        rows.addChild(Button.builder(Component.literal("Диагностика DUM-SDK"),
+        rows.addChild(Button.builder(Component.literal("DUM-SDK"),
                 button -> DumSdkClient.openDiagnostics((Screen) (Object) this)).width(150).build());
     }
 }
