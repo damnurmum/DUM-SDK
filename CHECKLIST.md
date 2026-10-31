@@ -67,7 +67,7 @@ Historical checks used local SDK build labels from 0.14.x through 0.17.0 before 
 - [x] `./gradlew :dum-fabric:runClientGameTest -PdownloadTest -PtestServer=localhost:25568` passes against real standalone Paper with signed hot fixture jars. Duplicate catalog entries, wrong offsets, corrupted data, bad signatures, unsolicited hashes and a repeated request are rejected. Paper displays the expected Russian error and code; the client never enters play or activates modules. Checked on 2026-10-30 through the actual codec/transport on both sides.
 - [x] The ordinary client game test passes against the same protocol 5 Paper server: valid module downloads/startup, item/equipment APIs, optional module failure, cleanup and reconnect remain functional. Checked on 2026-10-30.
 - [ ] Repeat protocol 5 client integration checks on Windows/Linux and the players' real instances. SDK 0.14.2 uses protocol 5; SDK 0.14.1 uses protocol 4.
-- [ ] Exercise a genuinely older-protocol installed client and automatic update/restart to a future published protocol 5 release. Existing self-update checklist item remains unverified by these tests.
+- [x] Exercise a genuinely older-protocol installed client and automatic update/restart to a published protocol 5 release. On macOS, the released SDK 0.14.1 (protocol 4) was refused by standalone Paper 0.14.2 with the Russian restart message and `UNSUPPORTED_PROTOCOL`; the automatic signed GitHub update installed 0.14.2 (protocol 5), removed the old jar, and the restarted production client joined with an active SDK session. Checked on 2026-10-31.
 
 ## Release signing key
 
@@ -80,11 +80,15 @@ Historical checks used local SDK build labels from 0.14.x through 0.17.0 before 
 
 ## Self-update of the mod
 
-Checked on the Mac only in a dev client against a fake release (download, signature, toast, helper copies the jar).
+Earlier macOS checks used a dev client against a fake release. On 2026-10-31, the full update from released 0.14.1 to released 0.14.2 was checked in a separate production Fabric client against real GitHub Releases and local standalone Paper 0.14.2 (Minecraft 26.2, Fabric Loader 0.20.1, Fabric API 0.161.0+26.2, Java 25.0.5). The installed jar matched the published asset byte for byte. Windows/Linux were not checked in this run. Several earlier launches hit GitHub connection timeouts; the updater checks once per game launch, so another launch was needed. Test fixtures and logs are outside this repository in `../DUM-SDK-Examples/self-update-test/`.
 
 - [x] In MultiMC: with release N installed, publish N+1; start the game, see the toast, close the game, and check that `mods` now has `DUM-SDK-<N+1>.jar` and no longer the old jar. 0.12.0 to 0.12.1 (2026-10-27): the new jar arrived, but the old one stayed, because the helper ran from it and Windows locks a jar a JVM runs from. Fixed in 0.12.2 (the helper runs from a copy). 0.12.2 to 0.12.3: the new jar arrived and the old one was deleted.
 - [x] The next start runs N+1 (`/sdk` shows it) and the server lets it in. 0.12.1, 2026-10-27; leaving the server no longer hangs the loading screen.
-- [ ] A client whose protocol is too old: the server's message says the mod updates itself after a restart, and it does.
+- [x] A client whose protocol is too old: the server's message says the mod updates itself after a restart, and it does. Checked on macOS with published 0.14.1 -> 0.14.2 on 2026-10-31: Russian restart message and `UNSUPPORTED_PROTOCOL`, automatic signed download, helper copy/removal, then a successful protocol 5 handshake and world entry after restart.
+
+## Disconnect screen layout (unreleased)
+
+- [x] On macOS, local Paper's outdated-client message separates restart instructions and the error code into paragraphs, with the manual download hint on its own line. The updated production client adds one aligned GitHub button above the return button, opens Minecraft's confirmation for the fixed SDK releases URL, and returns correctly after cancel. Layout and screenshots checked at 1280x720 and 854x480 window sizes; ordinary disconnect messages have no download button. The external test fixture sends a protocol 4 HELLO from the updated client to exercise the real server response. Checked on 2026-10-31; Windows/Linux and launching the external browser were not checked. Fixtures, logs and screenshots are in `../DUM-SDK-Examples/disconnect-ui-test/`.
 
 ## The players' real client
 
