@@ -1,12 +1,14 @@
 package ru.dum.sdk.paper;
 
 import com.mojang.brigadier.Command;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.connection.PlayerConfigurationConnection;
 import io.papermc.paper.connection.PlayerConnection;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
 import org.bukkit.entity.Player;
+import org.bukkit.command.CommandSender;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
@@ -23,6 +25,7 @@ import ru.dum.sdk.paper.api.DumSdkApi;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -79,36 +82,70 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
                             Placeholder.unparsed("modules", String.join(", ", catalog.modules().stream().map(m -> m.id() + " " + m.version()).toList()))));
                     return Command.SINGLE_SUCCESS;
                 })
-                .then(Commands.literal("reload").executes(ctx -> {
-                    reloadInProgress = true;
-                    boolean published = false;
-                    try {
-                        int count = publication.publish(catalog, getSLF4JLogger());
-                        catalogEpoch++;
-                        published = true;
-                        reloadConfig();
-                        messages.load();
-                        handshake.disable();
-                        handshake.enable();
-                        ctx.getSource().getSender().sendMessage(messages.get("core.published", Placeholder.unparsed("count", String.valueOf(count))));
-                    } catch (IOException e) {
-                        getSLF4JLogger().error("Cannot publish staged modules", e);
-                        ctx.getSource().getSender().sendMessage(messages.get("core.publish-failed"));
-                    } finally {
-                        if (published) {
-                            for (Player player : List.copyOf(getServer().getOnlinePlayers())) {
-                                player.kick(messages.get("core.reconnect"));
-                            }
-                        }
-                        reloadInProgress = false;
-                    }
-                    return Command.SINGLE_SUCCESS;
-                }))
+                .then(Commands.literal("reload")
+                        .executes(ctx -> reload(ctx.getSource().getSender(), List.of()))
+                        .then(Commands.argument("modules", StringArgumentType.greedyString())
+                                .suggests((ctx, builder) -> {
+                                    String input = builder.getRemaining();
+                                    var next = builder.createOffset(builder.getStart() + input.lastIndexOf(' ') + 1);
+                                    var specified = Arrays.asList(input.split("\\s+"));
+                                    catalog.modules().stream().map(Message.ModuleInfo::id).sorted()
+                                            .filter(id -> !specified.contains(id) && id.startsWith(next.getRemaining()))
+                                            .forEach(next::suggest);
+                                    return next.buildFuture();
+                                })
+                                .executes(ctx -> reload(ctx.getSource().getSender(),
+                                        Arrays.stream(StringArgumentType.getString(ctx, "modules").strip().split("\\s+")).distinct().toList()))))
                 .build(), "Управление DUM-SDK", List.of()));
+    }
+
+    private int reload(CommandSender sender, List<String> selected) {
+        if (reloadInProgress) {
+            sender.sendMessage(messages.get("core.publish-busy"));
+            return 0;
+        }
+        reloadInProgress = true;
+        sender.sendMessage(messages.get("core.publishing"));
+        // Jar copying, signatures and the persistent snapshot are prepared away from the game thread.
+        getServer().getScheduler().runTaskAsynchronously(this, () -> {
+            ModuleCatalog prepared = new ModuleCatalog();
+            try {
+                if (selected.isEmpty()) publication.publish(prepared, getSLF4JLogger());
+                else publication.publishSelected(prepared, getSLF4JLogger(), selected);
+            } catch (IOException | RuntimeException e) {
+                getSLF4JLogger().error("Cannot publish staged modules {}", selected.isEmpty() ? "(all)" : selected, e);
+                if (isEnabled()) getServer().getScheduler().runTask(this, () -> {
+                    reloadInProgress = false;
+                    sender.sendMessage(messages.get(selected.isEmpty() ? "core.publish-failed" : "core.publish-selected-failed",
+                            Placeholder.unparsed("modules", String.join(", ", selected))));
+                });
+                return;
+            }
+            if (isEnabled()) getServer().getScheduler().runTask(this, () -> {
+                catalog.replaceWith(prepared);
+                catalogEpoch++;
+                try {
+                    reloadConfig();
+                    messages.load();
+                } catch (IOException e) {
+                    getSLF4JLogger().error("Published modules, but could not reload messages", e);
+                } finally {
+                    handshake.disable();
+                    handshake.enable();
+                    sender.sendMessage(messages.get(selected.isEmpty() ? "core.published" : "core.published-selected",
+                            Placeholder.unparsed("count", String.valueOf(catalog.modules().size())),
+                            Placeholder.unparsed("modules", String.join(", ", selected))));
+                    for (Player player : List.copyOf(getServer().getOnlinePlayers())) player.kick(messages.get("core.reconnect"));
+                    reloadInProgress = false;
+                }
+            });
+        });
+        return Command.SINGLE_SUCCESS;
     }
 
     @Override
     public void onDisable() {
+        if (publication != null) publication.cancel();
         if (handshake != null) handshake.disable();
     }
 

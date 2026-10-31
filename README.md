@@ -53,6 +53,8 @@ Clients run only modules signed with the key whose public half is in `Signing.RE
 2. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules` (and `dumSigningKey=<file>` for a key elsewhere).
 3. In the module's own project, run its signing and deployment task (the external examples provide `./gradlew :<project>:deploy`). The server keeps offering its published catalog, including after a Paper restart, until `/dumsdk reload` publishes the staged jars. That command disconnects online players so everyone gets the new catalog when they rejoin. On the first startup after upgrading, the current `modules` folder becomes the initial published catalog.
 
+Unreleased: `/dumsdk reload <id> [id ...]` publishes only the selected staged modules or Fabric mods. Other published jars stay unchanged, even if their staged files changed or disappeared. Successful publication disconnects all online players; hot modules need a server rejoin, changed Fabric mods need a game restart when the client requests it. Missing, duplicate or invalid selected jars abort publication without disconnecting online players. See [selective publication](docs/modules.md#publishing).
+
 `./gradlew :dum-fabric:runClient -Prelease` refuses dev-signed modules, like a player's client. `-Psodium` and `-Piris` add Sodium 0.9.2 and Iris 1.11.4 to the dev client (shader packs go into `dum-fabric/run/shaderpacks`).
 
 ## Building

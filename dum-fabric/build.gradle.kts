@@ -58,6 +58,10 @@ loom {
     }
     runs.matching { it.name == "clientGameTest" }.configureEach {
         vmArg("-Ddumsdk.testServer=${findProperty("testServer") ?: "localhost"}")
+        if (project.hasProperty("publicationTest")) {
+            vmArgs("-Ddumsdk.publicationTest=${project.property("publicationTest")}",
+                "-Ddumsdk.publicationPhase=${findProperty("publicationPhase") ?: "hot"}")
+        }
         if (project.hasProperty("hubTest")) {
             vmArg("-Ddumsdk.hubTest=true")
             if (project.hasProperty("hubApi")) {

@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import java.util.zip.ZipFile;
 
 /**
  * The client modules this server hands out: a published snapshot of staged jars and their .jar.sig files
@@ -119,6 +120,22 @@ final class ModuleCatalog {
     byte @Nullable [] jar(byte[] sha256) {
         Entry entry = bySha.get(Signing.hex(sha256));
         return entry == null ? null : entry.jar;
+    }
+
+    /** Reads only metadata when selecting staged jars; filenames are not module IDs. */
+    static String id(Path jar) throws IOException {
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry entry = zip.getEntry("dum-module.json");
+            if (entry == null) entry = zip.getEntry("fabric.mod.json");
+            if (entry == null) throw new IOException("No module metadata in " + jar.getFileName());
+            try (var reader = new InputStreamReader(zip.getInputStream(entry), StandardCharsets.UTF_8)) {
+                String id = JsonParser.parseReader(reader).getAsJsonObject().get("id").getAsString();
+                if (!TransferValidation.moduleId(id)) throw new IOException("Invalid module ID in " + jar.getFileName());
+                return id;
+            }
+        } catch (RuntimeException e) {
+            throw new IOException("Invalid module metadata in " + jar.getFileName(), e);
+        }
     }
 
     /** dum-module.json of a module, or fabric.mod.json of a whole Fabric mod (cold load). */

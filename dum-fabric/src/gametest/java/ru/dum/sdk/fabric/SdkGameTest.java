@@ -37,6 +37,10 @@ public final class SdkGameTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        if (System.getProperty("dumsdk.publicationTest") != null) {
+            PublicationGameTest.run(context);
+            return;
+        }
         if (Boolean.getBoolean("dumsdk.hubTest")) {
             HubGameTest.run(context);
             return;

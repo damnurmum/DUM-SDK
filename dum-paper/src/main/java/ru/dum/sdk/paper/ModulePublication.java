@@ -1,6 +1,7 @@
 package ru.dum.sdk.paper;
 
 import org.slf4j.Logger;
+import ru.dum.sdk.network.TransferValidation;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -9,7 +10,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -19,11 +24,17 @@ final class ModulePublication {
     private final Path staging;
     private final Path snapshots;
     private final Path current;
+    private boolean cancelled;
 
     ModulePublication(Path data) {
         staging = data.resolve("modules");
         snapshots = data.resolve("published-modules");
         current = snapshots.resolve("current");
+    }
+
+    /** A disabled plugin must not commit an asynchronous publication after its replacement loads. */
+    synchronized void cancel() {
+        cancelled = true;
     }
 
     int load(ModuleCatalog catalog, Logger log) throws IOException {
@@ -42,32 +53,86 @@ final class ModulePublication {
 
     /** Copies and checks staging before atomically making it the catalog used after a server restart. */
     int publish(ModuleCatalog catalog, Logger log) throws IOException {
+        return publish(catalog, log, Set.of());
+    }
+
+    /** Replaces only selected IDs; the rest comes from the persistent published snapshot. */
+    int publishSelected(ModuleCatalog catalog, Logger log, Collection<String> ids) throws IOException {
+        if (ids.isEmpty() || ids.stream().anyMatch(id -> !TransferValidation.moduleId(id))) {
+            throw new IOException("Specify valid module IDs");
+        }
+        return publish(catalog, log, Set.copyOf(ids));
+    }
+
+    private int publish(ModuleCatalog catalog, Logger log, Set<String> selected) throws IOException {
         Files.createDirectories(staging);
         Files.createDirectories(snapshots);
+        List<Path> oldSnapshots;
+        try (Stream<Path> files = Files.list(snapshots)) {
+            oldSnapshots = files.filter(Files::isDirectory)
+                    .filter(path -> path.getFileName().toString().startsWith("snapshot-")).toList();
+        }
         Path snapshot = snapshots.resolve("snapshot-" + UUID.randomUUID());
         Files.createDirectory(snapshot);
         boolean committed = false;
         try {
-            for (Path jar : jars(staging)) {
-                Path signature = jar.resolveSibling(jar.getFileName() + ".sig");
-                if (!Files.isRegularFile(signature)) throw new IOException("Missing signature for " + jar.getFileName());
-                Files.copy(jar, snapshot.resolve(jar.getFileName()));
-                Files.copy(signature, snapshot.resolve(signature.getFileName()));
+            if (selected.isEmpty()) {
+                for (Path jar : jars(staging)) copy(jar, snapshot, jar.getFileName().toString());
+            } else {
+                Map<String, Path> replacements = new HashMap<>();
+                for (Path jar : jars(staging)) {
+                    String id;
+                    try {
+                        id = ModuleCatalog.id(jar);
+                    } catch (IOException e) {
+                        log.warn("Cannot inspect staged jar {}: {}", jar.getFileName(), e.getMessage());
+                        continue;
+                    }
+                    if (selected.contains(id) && replacements.putIfAbsent(id, jar) != null) {
+                        throw new IOException("Multiple staged jars for " + id);
+                    }
+                }
+                for (String id : selected) {
+                    Path jar = replacements.get(id);
+                    if (jar == null) throw new IOException("No staged jar for " + id);
+                    copySelected(jar, snapshot, id);
+                }
+                for (Path jar : jars(activeDirectory())) {
+                    String id = ModuleCatalog.id(jar);
+                    if (!selected.contains(id)) copySelected(jar, snapshot, id);
+                }
             }
             ModuleCatalog prepared = validated(snapshot, log);
             Path temporary = snapshots.resolve("current-" + UUID.randomUUID());
             try {
                 Files.writeString(temporary, snapshot.getFileName().toString(), StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW);
-                Files.move(temporary, current, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                synchronized (this) {
+                    if (cancelled) throw new IOException("Publication cancelled because the plugin was disabled");
+                    Files.move(temporary, current, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                    catalog.replaceWith(prepared);
+                    committed = true;
+                }
             } finally {
                 Files.deleteIfExists(temporary);
             }
-            catalog.replaceWith(prepared);
-            committed = true;
-            cleanupOldSnapshots(snapshot, log);
+            cleanupOldSnapshots(oldSnapshots, log);
             return prepared.modules().size();
         } finally {
             if (!committed) deleteTree(snapshot);
+        }
+    }
+
+    private static void copy(Path jar, Path snapshot, String name) throws IOException {
+        Path signature = jar.resolveSibling(jar.getFileName() + ".sig");
+        if (!Files.isRegularFile(signature)) throw new IOException("Missing signature for " + jar.getFileName());
+        Files.copy(jar, snapshot.resolve(name));
+        Files.copy(signature, snapshot.resolve(name + ".sig"));
+    }
+
+    private static void copySelected(Path jar, Path snapshot, String id) throws IOException {
+        copy(jar, snapshot, id + ".jar");
+        if (!id.equals(ModuleCatalog.id(snapshot.resolve(id + ".jar")))) {
+            throw new IOException("Module metadata changed while copying " + jar.getFileName());
         }
     }
 
@@ -93,18 +158,14 @@ final class ModulePublication {
         }
     }
 
-    private void cleanupOldSnapshots(Path active, Logger log) {
-        try (Stream<Path> files = Files.list(snapshots)) {
-            for (Path path : files.filter(Files::isDirectory).filter(path -> path.getFileName().toString().startsWith("snapshot-"))
-                    .filter(path -> !path.equals(active)).toList()) {
-                try {
-                    deleteTree(path);
-                } catch (IOException e) {
-                    log.warn("Cannot remove old published catalog {}", path, e);
-                }
+    private void cleanupOldSnapshots(List<Path> previous, Logger log) {
+        // A replacement plugin may already be preparing a newer snapshot. Never delete its directories.
+        for (Path path : previous) {
+            try {
+                deleteTree(path);
+            } catch (IOException e) {
+                log.warn("Cannot remove old published catalog {}", path, e);
             }
-        } catch (IOException e) {
-            log.warn("Cannot list old published catalogs", e);
         }
     }
 
