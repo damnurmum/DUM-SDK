@@ -22,6 +22,8 @@ import org.bukkit.plugin.messaging.PluginMessageListener;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.paper.api.DumSdkApi;
+import ru.dum.sdk.paper.api.ClientModuleFailureEvent;
+import ru.dum.sdk.network.ErrorCode;
 
 import java.io.IOException;
 import java.util.List;
@@ -188,6 +190,18 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
             decoded = Protocol.decode(message);
         } catch (IllegalArgumentException e) {
             getSLF4JLogger().warn("Malformed message from {}: {}", player.getName(), e.getMessage());
+            return;
+        }
+        if (decoded instanceof Message.ModuleFailure failure) {
+            if (!access.fail(player.getUniqueId(), failure.module(), catalogEpoch)) return;
+            getSLF4JLogger().warn("[MODULE_RUNTIME] {} reports {} failed in {}: {}",
+                    player.getName(), failure.module(), failure.where(), failure.detail());
+            try {
+                getServer().getPluginManager().callEvent(new ClientModuleFailureEvent(player, failure.module(), failure.where(), failure.detail()));
+            } finally {
+                player.kick(messages.get("runtime.failed", Placeholder.unparsed("module", failure.module()))
+                        .append(InstallErrors.code(messages, ErrorCode.MODULE_RUNTIME)));
+            }
             return;
         }
         if (!(decoded instanceof Message.Module(String module, byte[] data))) return;

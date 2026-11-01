@@ -21,7 +21,8 @@ public enum ErrorCode {
     UNEXPECTED_REQUEST(14),
     UNSUPPORTED_PROTOCOL(15),
     HELLO_TIMEOUT(16),
-    INSTALL_TIMEOUT(17);
+    INSTALL_TIMEOUT(17),
+    MODULE_RUNTIME(18);
 
     private final int wireId;
 

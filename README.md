@@ -8,7 +8,7 @@ Work in progress. Done so far:
 - Modules may carry `assets/` (textures, models, sounds, lang): while a module runs, its jar is a client resource pack on top of the others, loaded before the player enters the world.
 - Modules can add keys (Controls, category DUM; bindings kept between sessions) and client-only entities in the world, such as display entities with models from their assets.
 - Cold load: a server-scoped Fabric mod can provide its own mixins and early registrations. SDK 0.14.0 requires it to declare a `dum-sdk:server` entrypoint implementing `DumServerMod`, without startup entrypoints. The client verifies its signature, dependencies and loaded hash; installation/updates require a game restart. Only the current accepted catalog enables its managed effects. Mixins must check `ServerSession.active(modId)`; classes and native registrations remain loaded, so arbitrary third-party mods cannot be automatically suspended. See [the cold mod contract](docs/modules.md#fabric-mods-cold-load).
-- DUM-SDK menu (unreleased): the Settings button and `/sdk` open Overview, Updates, Errors and Files. Updates includes published release descriptions with an offline cache. An accepted SDK server adds searchable Modifications for published server modules and server Fabric mods, with a direct pause-menu shortcut. See [the SDK menu](docs/diagnostics.md). A module that throws is turned off with a toast.
+- DUM-SDK menu (unreleased): the Settings button and `/sdk` open Overview, Updates, Errors and Files. Updates includes published release descriptions with an offline cache. An accepted SDK server adds searchable Modifications for published server modules and server Fabric mods, with a direct pause-menu shortcut. See [the SDK menu](docs/diagnostics.md). Managed runtime failures notify Paper and disconnect for rejoin; details stay in Errors.
 - Modules can listen to any Fabric API event (`DumContext.on`), see and drop every packet the client receives or sends (`onReceive` / `onSend`), and draw in the world (`WorldDraw` has shapes that also show with Iris shader packs).
 - Modules talk to their server side over `dum:sdk` (`DumContext.sendToServer` / `onServerMessage`) and can draw on and take clicks from game screens.
 - Session-scoped appearance hooks let hot modules select armor/wings rendering and define models and names for tagged vanilla items. Their effects require a successful SDK handshake, module installation and play join; they stop on disconnect and stay off on ordinary servers. This does not hot-load arbitrary mixins or add native registry types.
@@ -48,6 +48,8 @@ The entrypoint implements `ru.dum.sdk.api.DumModule`. It may use any game or Fab
 ## Signing
 
 Clients run only modules signed with the key whose public half is in `Signing.RELEASE_KEY` (`dum-network`). Development clients (`runClient`) also accept `Signing.DEV_KEY`.
+
+Unreleased: development client/Paper use protocol 6 for runtime failure reports; build/update both together. The SDK version remains the last published 0.14.2. Cold Fabric mods can export versioned named hooks for hot modules; see [hook contracts](docs/modules.md#versioned-hooks-from-fabric-mods-unreleased).
 
 1. Once, on the machine that signs: `./gradlew generateSigningKey`. The private key goes to `~/.dum/signing.key`; keep a copy somewhere safe and never commit it. Put the printed public key into `Signing.RELEASE_KEY`.
 2. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules` (and `dumSigningKey=<file>` for a key elsewhere).

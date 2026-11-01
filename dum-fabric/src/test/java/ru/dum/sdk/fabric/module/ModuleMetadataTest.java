@@ -45,4 +45,13 @@ class ModuleMetadataTest {
         assertEquals(List.of("DUM"), manifest.authorNames());
         assertEquals("Probe", manifest.entrypoint());
     }
+
+    @Test void hookRequirementsAreOptionalButMalformedContractsFailValidation() throws Exception {
+        assertTrue(read("").hookRequirements().isEmpty());
+        assertEquals(java.util.Map.of("base:label", 2), read(",\"hooks\":{\"base:label\":2}").hookRequirements());
+        for (String invalid : List.of("{\"missing-namespace\":1}", "{\"base:label\":0}",
+                "{\"base:label\":null}", "{\"base:label\":1.5}", "[]")) {
+            assertThrows(java.io.IOException.class, () -> read(",\"hooks\":" + invalid));
+        }
+    }
 }

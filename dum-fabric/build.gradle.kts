@@ -58,6 +58,10 @@ loom {
     }
     runs.matching { it.name == "clientGameTest" }.configureEach {
         vmArg("-Ddumsdk.testServer=${findProperty("testServer") ?: "localhost"}")
+        if (project.hasProperty("extensionsTest")) {
+            vmArgs("-Ddumsdk.extensionsTest=${project.property("extensionsTest")}",
+                "-Ddumsdk.extensionsPhase=${findProperty("extensionsPhase") ?: "runtime"}")
+        }
         if (project.hasProperty("publicationTest")) {
             vmArgs("-Ddumsdk.publicationTest=${project.property("publicationTest")}",
                 "-Ddumsdk.publicationPhase=${findProperty("publicationPhase") ?: "hot"}")

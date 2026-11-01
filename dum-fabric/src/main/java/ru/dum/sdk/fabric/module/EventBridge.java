@@ -4,15 +4,16 @@ import net.fabricmc.fabric.api.event.Event;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Collections;
+import java.util.WeakHashMap;
 import java.util.function.Function;
+import java.util.function.BooleanSupplier;
 
 /**
  * Any Fabric API event for modules. Fabric events cannot be unregistered, so the SDK registers one proxy per event
@@ -22,7 +23,7 @@ import java.util.function.Function;
  */
 final class EventBridge {
 
-    private final Map<Event<?>, Hub<?>> hubs = new ConcurrentHashMap<>();
+    private final Map<Event<?>, Hub<?>> hubs = Collections.synchronizedMap(new WeakHashMap<>());
     /** Turns off a module whose listener threw: the module, where, the error. */
     interface Failed {
         void fail(RunningModule module, String where, Throwable error);
@@ -36,11 +37,18 @@ final class EventBridge {
 
     @SuppressWarnings("unchecked")
     <T> void add(RunningModule module, Event<T> event, T listener) {
-        ((Hub<T>) hubs.computeIfAbsent(event, Hub::new)).add(module, listener);
+        add(module, event, listener, () -> true);
+    }
+
+    @SuppressWarnings("unchecked")
+    <T> void add(RunningModule module, Event<T> event, T listener, BooleanSupplier providerActive) {
+        ((Hub<T>) hubs.computeIfAbsent(event, Hub::new)).add(module, listener, providerActive);
     }
 
     void remove(RunningModule module) {
-        hubs.values().forEach(hub -> hub.remove(module));
+        synchronized (hubs) {
+            hubs.values().forEach(hub -> hub.remove(module));
+        }
     }
 
     private final class Hub<T> {
@@ -70,9 +78,9 @@ final class EventBridge {
             ((Event<T>) event).register(proxy(type, (method, args) -> forward(method, combined, args)));
         }
 
-        synchronized void add(RunningModule module, T listener) {
+        synchronized void add(RunningModule module, T listener, BooleanSupplier providerActive) {
             T guarded = proxy(type, (method, args) -> {
-                if (!module.active()) return forward(method, neutral, args);
+                if (!module.active() || !providerActive.getAsBoolean()) return forward(method, neutral, args);
                 long start = System.nanoTime();
                 try {
                     return method.invoke(listener, args);
@@ -127,7 +135,6 @@ final class EventBridge {
                     default -> "DUM-SDK " + type.getSimpleName();
                 };
             }
-            if (method.isDefault()) return InvocationHandler.invokeDefault(proxy, method, args);
             return call.invoke(method, args);
         }));
     }

@@ -70,6 +70,28 @@ class ProtocolTest {
     }
 
     @Test
+    void runtimeFailureRoundTripsAndRejectsMalformedReports() {
+        var report = new Message.ModuleFailure("info", "HUD", "IllegalStateException: failed");
+        byte[] encoded = Protocol.encode(report);
+        assertEquals(8, encoded[0]);
+        assertEquals(report, Protocol.decode(encoded));
+        for (var invalid : new Message.ModuleFailure[]{
+                new Message.ModuleFailure("", "HUD", "failed"),
+                new Message.ModuleFailure("../info", "HUD", "failed"),
+                new Message.ModuleFailure("info", "", "failed"),
+                new Message.ModuleFailure("info", "x".repeat(Protocol.MAX_FAILURE_CONTEXT + 1), "failed"),
+                new Message.ModuleFailure("info", "HUD", "x".repeat(Protocol.MAX_ERROR_DETAIL + 1)),
+                new Message.ModuleFailure("info", "HUD", "forged\nlog line"),
+                new Message.ModuleFailure("info", "HUD", "\u001b[31mred"),
+        }) assertThrows(ProtocolException.class, () -> Protocol.encode(invalid));
+        byte[] malformed = encoded.clone();
+        malformed[malformed.length - 1] = '\n';
+        assertThrows(ProtocolException.class, () -> Protocol.decode(malformed));
+        assertThrows(ProtocolException.class, () -> Protocol.decode(java.util.Arrays.copyOf(encoded, encoded.length - 1)));
+        assertThrows(ProtocolException.class, () -> Protocol.decode(java.util.Arrays.copyOf(encoded, encoded.length + 1)));
+    }
+
+    @Test
     void helloStartsWithProtocolVersion() {
         // Type byte, then the protocol as a big-endian int: older and newer servers rely on this layout
         byte[] data = Protocol.encode(new Message.Hello(0x01020304, "x"));

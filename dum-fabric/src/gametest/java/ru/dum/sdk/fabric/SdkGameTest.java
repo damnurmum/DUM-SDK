@@ -26,8 +26,8 @@ import java.util.List;
 
 /**
  * End to end, against a running test server (DUM-SDK, DUM-Runtime-Test, info and sdktest, no cold mods):
- * join, check the handshake and the modules, break sdktest with its key and check that only it went down,
- * look at /sdk, leave and check that everything is unloaded. Screenshots go to the run folder.
+ * join, check the handshake and the modules, break sdktest with its key and check the runtime-failure kick,
+ * inspect diagnostics and check that effects are unloaded. Screenshots go to the run folder.
  * Start the server first, then ./gradlew :dum-fabric:runClientGameTest [-PtestServer=host:port].
  * -PplainServer=host:port also checks a transition to an ordinary server without the plugin.
  */
@@ -37,6 +37,10 @@ public final class SdkGameTest implements FabricClientGameTest {
 
     @Override
     public void runTest(ClientGameTestContext context) {
+        if (System.getProperty("dumsdk.extensionsTest") != null) {
+            ExtensionsGameTest.run(context);
+            return;
+        }
         if (System.getProperty("dumsdk.publicationTest") != null) {
             PublicationGameTest.run(context);
             return;
@@ -105,7 +109,7 @@ public final class SdkGameTest implements FabricClientGameTest {
         context.waitFor(client -> client.player != null && !client.player.isDeadOrDying() && !(client.gui.screen() instanceof DeathScreen), MINUTE);
         context.setScreen(() -> null);
 
-        // Break sdktest with its key: only it goes down, with a recorded failure
+        // Runtime failures now notify Paper and end the entire client session, including optional modules.
         KeyMapping fail = context.computeOnClient(client -> KeyMapping.get("key.sdktest.fail"));
         check(fail != null, "sdktest registered its keys");
         context.runOnClient(client -> {
@@ -113,21 +117,20 @@ public final class SdkGameTest implements FabricClientGameTest {
             KeyMapping.resetMapping();
         });
         context.getInput().pressKey(fail);
-        context.waitTicks(10);
+        context.waitFor(client -> client.gui.screen() instanceof DisconnectedScreen, MINUTE);
         context.runOnClient(client -> {
             check(!running().contains("sdktest"), "sdktest is off after failing, still running " + running());
-            check(running().contains("info"), "info keeps running");
+            check(running().isEmpty() && !ServerSession.active(), "failure disables all SDK effects before rejoin");
+            check(client.gui.screen().getNarrationMessage().getString().contains("MODULE_RUNTIME"), "runtime failure displays its stable code");
             passive(probe[0], chest[0]);
             List<ModuleManager.Failure> failures = DumSdkClient.modules().failures();
             check(failures.size() == 1 && failures.getFirst().module().equals("sdktest")
                     && failures.getFirst().where().contains("key.sdktest.fail"), "the failure names sdktest and its key, got " + failures);
-            client.player.connection.sendCommand("sdk");
+            DumSdkClient.openDiagnostics(null);
         });
         context.waitTicks(10);
         context.takeScreenshot("dum-sdk-after-failure");
 
-        context.runOnClient(Minecraft::disconnectWithProgressScreen);
-        context.waitFor(client -> client.level == null, MINUTE);
         context.waitTicks(20);
         context.runOnClient(client -> {
             check(running().isEmpty(), "every module is unloaded after leaving, still " + running());

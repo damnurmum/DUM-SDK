@@ -31,6 +31,24 @@ class ModuleAccessTest {
     }
 
     @Test
+    void onlyOneGrantedFailureRevokesTheEntireCurrentSession() {
+        ModuleAccess access = new ModuleAccess();
+        access.grant(player, List.of("info", "hookbase"), 2);
+        assertFalse(access.fail(player, "not-granted", 2));
+        assertFalse(access.fail(player, "info", 1));
+        assertTrue(access.has(player, "info", 2));
+        assertTrue(access.fail(player, "hookbase", 2));
+        assertFalse(access.current(player, 2));
+        assertFalse(access.has(player, "info", 2));
+        assertFalse(access.fail(player, "hookbase", 2));
+        assertFalse(access.fail(player, "info", 2));
+        access.grant(player, List.of("info"), 3);
+        assertFalse(access.fail(player, "info", 2));
+        assertTrue(access.has(player, "info", 3));
+        assertTrue(access.fail(player, "info", 3));
+    }
+
+    @Test
     void burstThenSteadyRate() {
         ModuleAccess access = new ModuleAccess();
         // A burst of 3 at once goes through, the 4th is dropped

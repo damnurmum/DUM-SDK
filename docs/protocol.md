@@ -2,6 +2,8 @@
 
 SDK 0.14.2 uses protocol 5. SDK 0.14.1 uses protocol 4. Update both client and Paper together for this wire change.
 
+Unreleased development uses protocol 6 for runtime failure reports. The published SDK version stays 0.14.2 until a release is requested. Use matching development client/Paper builds; published protocol 5 clients cannot join a protocol 6 server. This is not a published SDK release.
+
 The server accepts matching protocol numbers. `sdkVersion` is shown in diagnostics; it is not an enforced minimum or a comparison with the latest GitHub release. Capability negotiation is not implemented.
 
 ## Installation
@@ -23,3 +25,11 @@ Protocol 5 READY (type 6) contains an explicit one-byte `ErrorCode` wire ID, mod
 Paper logs the reported code, module and diagnostic detail. Player-facing text comes from the server's `install-errors` message keys; raw client diagnostics/markup are not rendered. A separate `handshake.error-code` text appends the stable code, with bundled defaults for old messages files.
 
 The overall download memory budget, concurrency and bandwidth policy are unchanged. Checking a packet's correctness does not cap the combined size of many valid files or simultaneous clients. Resource budgeting remains separate work.
+
+## Runtime failure reports (unreleased, protocol 6)
+
+`MODULE_FAILURE` (type 8, client to server in play) contains three modified-UTF strings: module ID, callback context (1-128 characters), and diagnostic detail (1-1024 characters). IDs must be valid/nonempty; context/detail must be nonblank single lines without control characters or Unicode line separators. Both encoding and decoding validate them and reject trailing/truncated data. Error code `MODULE_RUNTIME` has stable ID 18. Installation messages and the stable HELLO prefix keep their framing.
+
+The SDK reports the first managed runtime failure before deactivating the client session and cleaning up every module. This includes optional modules and cold mod callbacks registered through the context. Paper accepts a report only for a module granted to that player in the current catalog epoch, atomically revokes all grants, logs the bounded detail and fires `ClientModuleFailureEvent` on the main thread before disconnecting with `runtime.failed` and the stable code. Raw client context/detail are not rendered in the kick message. Duplicate, stale-epoch and ungranted reports are ignored. Reports describe client claims, not verified execution or an anti-cheat guarantee.
+
+The client normally waits for Paper's configured kick message. A three-second fallback disconnects locally if the server does not respond; its callback is bound to the original connection and cannot disconnect a later session. Disconnect ownership is retained for normal cleanup even though effects are already inactive. Fresh contexts are created on rejoin. Optional startup failures retain their existing installation behavior; they do not become play-phase reports. A terminated JVM or an exception outside SDK-managed callbacks cannot reliably send this report.

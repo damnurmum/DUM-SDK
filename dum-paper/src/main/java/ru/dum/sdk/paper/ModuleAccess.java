@@ -48,6 +48,15 @@ final class ModuleAccess {
         return grant != null && grant.catalogEpoch == catalogEpoch && grant.modules.contains(module);
     }
 
+    /** Accept at most one failure from the current granted catalog, revoking every module before callbacks. */
+    boolean fail(UUID player, String module, long catalogEpoch) {
+        Grant grant = granted.get(player);
+        if (grant == null || grant.catalogEpoch != catalogEpoch || !grant.modules.contains(module)
+                || !granted.remove(player, grant)) return false;
+        buckets.remove(player);
+        return true;
+    }
+
     /**
      * Whether one more message from this player to this module goes through.
      *

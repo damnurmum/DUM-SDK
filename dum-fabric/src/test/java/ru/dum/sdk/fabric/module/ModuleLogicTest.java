@@ -44,6 +44,13 @@ class ModuleLogicTest {
     }
 
     @Test
+    void hotConsumerCanDependOnAnAcceptedColdProvider() {
+        var provider = new ModuleManager.Candidate(new ModuleManifest("base", "1.2.0", 1, "x", Map.of(), "cold", true), Path.of("base.jar"));
+        assertEquals(List.of("base", "consumer"), resolve(candidate("consumer", "1.0.0", Map.of("base", ">=1.0.0")), provider));
+        assertEquals(List.of("base"), resolve(candidate("consumer", "1.0.0", Map.of("base", ">=2.0.0")), provider));
+    }
+
+    @Test
     void missingOrWrongDependenciesDropTheModuleAndItsDependents() {
         assertEquals(List.of("alone"), resolve(
                 candidate("alone", "1.0.0", Map.of()),

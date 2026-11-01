@@ -16,6 +16,7 @@ import ru.dum.sdk.api.DumModule;
 import ru.dum.sdk.api.ScreenLayer;
 import ru.dum.sdk.api.EquipmentAppearance;
 import ru.dum.sdk.api.ItemDefinition;
+import ru.dum.sdk.api.HookKey;
 import ru.dum.sdk.fabric.SdkPayload;
 import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
@@ -62,18 +63,26 @@ final class RunningModule implements DumContext {
     final List<PacketHandler> sent = new CopyOnWriteArrayList<>();
     private final ModuleKeys keyStore;
     private final EventBridge events;
+    private final HookRegistry hooks;
     /** Client-only entities get negative ids, so they never clash with the server's. */
     private static int nextEntityId = -1_000_000;
     private final Logger logger;
     private final Path dataDir;
     private final BooleanSupplier active;
     private volatile boolean closed;
+    private boolean initializing = true;
     private final List<Runnable> cleanup = new CopyOnWriteArrayList<>();
 
     RunningModule(ModuleManifest manifest, Path jar, @Nullable URLClassLoader loader, DumModule instance, Path dataDir,
                   ModuleKeys keyStore, EventBridge events, BooleanSupplier active) {
+        this(manifest, jar, loader, instance, dataDir, keyStore, events, new HookRegistry(events), active);
+    }
+
+    RunningModule(ModuleManifest manifest, Path jar, @Nullable URLClassLoader loader, DumModule instance, Path dataDir,
+                  ModuleKeys keyStore, EventBridge events, HookRegistry hooks, BooleanSupplier active) {
         this.keyStore = keyStore;
         this.events = events;
+        this.hooks = hooks;
         this.active = active;
         this.manifest = manifest;
         this.jar = jar;
@@ -176,6 +185,19 @@ final class RunningModule implements DumContext {
     }
 
     @Override
+    public <T> void provideHook(HookKey<T> key, Event<T> event) {
+        requireOpen();
+        if (!initializing) throw new IllegalStateException("Publish hooks during onEnable");
+        hooks.provide(this, key, event);
+    }
+
+    @Override
+    public <T> void onHook(HookKey<T> key, T listener) {
+        requireOpen();
+        hooks.subscribe(this, key, listener);
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public <P extends Packet<?>> void onReceive(Class<P> type, Predicate<? super P> handler) {
         requireOpen();
@@ -191,6 +213,7 @@ final class RunningModule implements DumContext {
 
     void clear() {
         closed = true;
+        hooks.remove(this);
         events.remove(this);
         received.clear();
         sent.clear();
@@ -202,9 +225,11 @@ final class RunningModule implements DumContext {
         serverHandler = null;
         if (!keys.isEmpty()) keyStore.remove(keys.keySet());
         keys.clear();
-        ClientLevel level = Minecraft.getInstance().level;
-        for (Entity entity : entities) {
-            if (!entity.isRemoved() && level != null && entity.level() == level) level.removeEntity(entity.getId(), Entity.RemovalReason.DISCARDED);
+        if (!entities.isEmpty()) {
+            ClientLevel level = Minecraft.getInstance().level;
+            for (Entity entity : entities) {
+                if (!entity.isRemoved() && level != null && entity.level() == level) level.removeEntity(entity.getId(), Entity.RemovalReason.DISCARDED);
+            }
         }
         entities.clear();
         for (Runnable task : cleanup.reversed()) {
@@ -223,6 +248,9 @@ final class RunningModule implements DumContext {
     }
 
     private void requireOpen() {
-        if (closed) throw new IllegalStateException("Module is unloaded");
+        if (!open()) throw new IllegalStateException("Module is unloaded or failed");
     }
+
+    boolean open() { return !closed && !failed; }
+    void finishInitialization() { initializing = false; }
 }

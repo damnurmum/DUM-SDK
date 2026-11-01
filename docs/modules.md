@@ -66,7 +66,7 @@ The client accepts a catalog only after a compatible WELCOME on that same connec
 
 Unless stated otherwise, callbacks run on the render thread.
 
-A module that throws anywhere the SDK calls it is turned off and the Errors tab in Settings > DUM-SDK shows the error (`/sdk` opens the menu). If it is required (or a required module depends on it), the player is disconnected from the server; otherwise the player gets a toast and the other modules keep running.
+A module that throws anywhere the SDK calls it is turned off and the Errors tab in Settings > DUM-SDK shows the error (`/sdk` opens the menu). Unreleased runtime policy: a failure during play, including an optional module or a managed cold mod callback, notifies Paper and ends the entire SDK session with a Russian rejoin message and `MODULE_RUNTIME`. Rejoining starts fresh instances/contexts. During installation, required startup failures still prevent entry; optional startup failures can stay disabled. Errors in arbitrary native/mixin code outside managed callbacks are not automatically intercepted.
 
 ### DumContext
 
@@ -83,6 +83,8 @@ A module that throws anywhere the SDK calls it is turned off and the Errors tab 
 | `key(name, defaultKey, onPress)` | A key in Controls under DUM; title from the lang key `key.<module>.<name>`; bindings are kept |
 | `addEntity(Entity)` | A client-only entity, such as a display entity; gone with the level, check `isRemoved()` |
 | `on(Event, listener)` | Any Fabric API event: world rendering, input, interaction, lifecycle... |
+| `provideHook(HookKey, Event)` | Unreleased: publish a versioned EventFactory event during a server-scoped Fabric mod's `onEnable` |
+| `onHook(HookKey, listener)` | Unreleased: subscribe through a declared hook contract; callbacks and removal are session-scoped |
 | `onReceive(Class, Predicate)` | Every packet of that type from the server, before the game handles it; return false to drop it |
 | `onSend(Class, Predicate)` | Every packet of that type the client sends; return false to drop it (called on the sending thread) |
 | `onServerMessage(Consumer<byte[]>)`, `sendToServer(byte[])` | Talking to the module's server side |
@@ -98,6 +100,36 @@ A module that throws anywhere the SDK calls it is turned off and the Errors tab 
 These definitions do not add native registry entries, item physics or server gameplay. The server owns the real item and validates its use. The prototype supports names and models; other properties and additional native types need separate work.
 
 `ServerSession.active()` reports whether this connection completed handshake, installation and play join. For a cold mod use `ServerSession.active("my_mod")` instead: another SDK server may not have that mod in its catalog. `context.active()` refers to that exact context and stays false after unload, even when the same mod rejoins. Hot and cold registrations through `DumContext` are scoped automatically.
+
+### Versioned hooks from Fabric mods (unreleased)
+
+A cold mod installs its mixins and public listener interfaces once when Fabric starts the game. Its SDK `onEnable` publishes named hook contracts for this accepted catalog; hot modules subscribe without shipping their own mixins. Providers and consumers are resolved in one dependency order, with providers first. The provider jar must already be loaded and match the signed catalog. Changing the provider's code/mixins still requires a game restart. Adding or updating a hot consumer of an existing hook needs only a server rejoin.
+
+Keep the shared hook API in the cold provider jar, for example:
+
+```java
+public final class CameraHooks {
+    public interface FovHook { float modify(float original); }
+    public static final HookKey<FovHook> FOV = new HookKey<>("camera_hooks:fov", 1, FovHook.class);
+    public static final Event<FovHook> EVENT = EventFactory.createArrayBacked(FovHook.class, listeners -> original -> {
+        for (FovHook listener : listeners) original = listener.modify(original);
+        return original;
+    });
+}
+```
+
+The provider calls `context.provideHook(CameraHooks.FOV, CameraHooks.EVENT)` during `onEnable`. Its own mixin checks `ServerSession.active("camera_hooks")` and then calls `CameraHooks.EVENT.invoker().modify(original)`. Outside that catalog it returns the original game value. Only a cold mod can publish hooks, only in its own namespace, once per hook ID in that session, and only during `onEnable`. Use EventFactory array-backed events with the intended neutral/combining behavior.
+
+The hot consumer compiles against the provider jar with `compileOnly`; do not bundle another copy of its interfaces. Declare both the provider's jar version dependency and the exact integer hook API version in `dum-module.json`:
+
+```json
+"dependencies": { "camera_hooks": ">=1.0.0" },
+"hooks": { "camera_hooks:fov": 1 }
+```
+
+Then use `context.onHook(CameraHooks.FOV, original -> original * 0.85f)`. SDK checks all declared hooks before running consumer code: provider availability, explicit dependency, exact contract version, and the shared listener class when subscribing. Hook API versions are independent of provider/module jar versions. Missing/incompatible required consumers prevent world entry. Legacy modules can omit `hooks`.
+
+SDK subscriptions use the same event combiner as Fabric. Listeners are inactive before play, immediately after disconnect, or while their provider/consumer is failed. Stopping a provider stops its dependent modules first. Old contexts reject new subscriptions, and retained old listeners never reactivate on rejoin. The provider's static event can be reused across sessions without accumulating module listeners. Register/subscribe through the context on the render thread; callbacks run on the thread that invokes the provider event, so the provider must document that thread. A throwing hook listener is attributed to its consumer and follows the runtime failure policy.
 
 ### Resources
 
@@ -137,6 +169,8 @@ sdk.sendToModule(player, "info", bytes); // from PlayerJoinEvent on
 ```
 
 The module's data format is its own business; follow the [fair play rules](#fair-play-the-rules-every-module-follows): the server decides and checks, and sends only what the player may know (the `info` accessories send only "slot N was clicked", and the server decides what happens).
+
+Unreleased: listen for `ru.dum.sdk.paper.api.ClientModuleFailureEvent` to observe a managed runtime failure. The event exposes `module()`, `where()` and `detail()` plus the player. It runs after all SDK grants are revoked and before the reconnect kick; `sdk.hasModule` is already false. It cannot cancel the kick. Treat diagnostics as untrusted bounded client reports and use them for logging/cleanup, not gameplay rewards or validation. Missing `runtime.failed` text in old `messages.yml` files falls back to the bundled Russian message.
 
 DUM-SDK enforces part of the rules itself, so a module cannot forget them:
 

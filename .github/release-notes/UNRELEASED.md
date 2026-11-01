@@ -1,5 +1,8 @@
 # Unreleased
 
+- Use protocol 6 in development for bounded runtime module-failure reports. Paper revokes the player's grants, logs the report, fires `ClientModuleFailureEvent` and disconnects for rejoin. This applies to optional and required managed play callbacks; client effects stop immediately, with a connection-bound local disconnect fallback if Paper does not respond. SDK release version remains unchanged until release.
+- Let server-scoped Fabric mods publish named/versioned EventFactory hooks for hot modules. Validate declared hook contracts and provider dependencies before consumer startup, resolve hot/cold dependencies together, guard subscriptions by both contexts and remove old listeners on unload. Native mixins/interfaces load once per game; existing hooks can serve new hot consumers after a server rejoin.
+
 - Add `/dumsdk reload <id> [id ...]` to publish only selected staged modules/Fabric mods while preserving the other published jars. Validate and copy jars off the game thread, serialize publication attempts, keep the previous catalog on failure and disconnect all online players after success. Existing no-argument reload still publishes the entire staging folder. Hot updates need a server rejoin; changed Fabric mods use the existing game-restart helper. Missing new message keys fall back to bundled Russian texts.
 
 - Separate the outdated-client restart instructions and stable error code into paragraphs, with the manual download hint on its own line. Existing `messages.yml` overrides take precedence; update `handshake.outdated-client` and `handshake.error-code` overrides to adopt this spacing.

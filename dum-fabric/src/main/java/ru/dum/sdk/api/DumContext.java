@@ -77,6 +77,16 @@ public interface DumContext {
      */
     <T> void on(Event<T> event, T listener);
 
+    /** Publish a versioned EventFactory event under this cold mod's namespace during onEnable. */
+    default <T> void provideHook(HookKey<T> key, Event<T> event) {
+        throw new UnsupportedOperationException("This DUM-SDK does not support named hooks");
+    }
+
+    /** Subscribe to a declared hook requirement. The SDK guards and removes this module's listener. */
+    default <T> void onHook(HookKey<T> key, T listener) {
+        throw new UnsupportedOperationException("This DUM-SDK does not support named hooks");
+    }
+
     /**
      * Every packet of this type (or a subtype) from the server, on the render thread, before the game handles it.
      * Packets of a bundle come one by one. Return false to drop the packet: the game never sees it.

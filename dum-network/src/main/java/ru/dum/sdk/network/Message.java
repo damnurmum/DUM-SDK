@@ -47,4 +47,8 @@ public sealed interface Message {
     /** Either way, in the play phase: data for one client module and its server side. The format is up to the module. */
     record Module(String module, byte[] data) implements Message {
     }
+
+    /** Client to server in play: one installed module failed; the server revokes the session and requests rejoin. */
+    record ModuleFailure(String module, String where, String detail) implements Message {
+    }
 }

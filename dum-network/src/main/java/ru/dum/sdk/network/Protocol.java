@@ -19,10 +19,11 @@ public final class Protocol {
     public static final String CHANNEL = "dum:sdk";
 
     /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
-    public static final int VERSION = 5;
+    public static final int VERSION = 6;
 
     public static final int MAX_MODULE_COUNT = 1024;
     public static final int MAX_ERROR_DETAIL = 1024;
+    public static final int MAX_FAILURE_CONTEXT = 128;
 
     /** Jar bytes per {@link Message.Chunk}; a plugin message may carry up to 1 MiB. */
     public static final int CHUNK_SIZE = 512 * 1024;
@@ -38,6 +39,7 @@ public final class Protocol {
     private static final byte CHUNK = 5;
     private static final byte READY = 6;
     private static final byte RESTART = 7;
+    private static final byte MODULE_FAILURE = 8;
 
     private static final int SHA256 = 32;
     private static final int SIGNATURE = 64;
@@ -102,6 +104,13 @@ public final class Protocol {
                     out.writeUTF(module);
                     out.write(payload);
                 }
+                case Message.ModuleFailure failure -> {
+                    TransferValidation.failure(failure);
+                    out.writeByte(MODULE_FAILURE);
+                    out.writeUTF(failure.module());
+                    out.writeUTF(failure.where());
+                    out.writeUTF(failure.detail());
+                }
             }
         } catch (IOException e) {
             // ByteArrayOutputStream does not throw
@@ -155,6 +164,11 @@ public final class Protocol {
                     yield new Message.Restart(List.copyOf(mods));
                 }
                 case MODULE -> new Message.Module(in.readUTF(), in.readAllBytes());
+                case MODULE_FAILURE -> {
+                    var failure = new Message.ModuleFailure(in.readUTF(), in.readUTF(), in.readUTF());
+                    TransferValidation.failure(failure);
+                    yield failure;
+                }
                 default -> throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Unknown message type " + data[0]);
             };
             if (in.available() > 0) {

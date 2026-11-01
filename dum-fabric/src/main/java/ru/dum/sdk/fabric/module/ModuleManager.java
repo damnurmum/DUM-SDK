@@ -74,6 +74,7 @@ public final class ModuleManager {
     private final ModulePacks packs = new ModulePacks();
     private final ModuleKeys keys;
     private final EventBridge events = new EventBridge(this::fail);
+    private final HookRegistry hooks = new HookRegistry(events, () -> Minecraft.getInstance().isSameThread());
     /** What went wrong with modules this game session, for the diagnostics screen. */
     private final List<Failure> failures = new CopyOnWriteArrayList<>();
 
@@ -159,7 +160,6 @@ public final class ModuleManager {
         if (!running.isEmpty()) return CompletableFuture.completedFuture(null);
         List<ModuleManifest> all = new ArrayList<>();
         Map<String, Candidate> found = scan(jars, all);
-        List<Candidate> order = resolve(found);
         Map<String, Candidate> cold = new LinkedHashMap<>();
         Set<String> coldIds = mods.stream().map(ColdMods.Mod::id).collect(java.util.stream.Collectors.toSet());
         for (ColdMods.Mod mod : mods) {
@@ -172,7 +172,8 @@ public final class ModuleManager {
             all.add(manifest);
             cold.put(mod.id(), new Candidate(manifest, mod.jar()));
         }
-        List<Candidate> coldOrder = resolve(cold);
+        found.putAll(cold);
+        List<Candidate> order = resolve(found);
         if (all.isEmpty()) return CompletableFuture.completedFuture(null);
         // Playing without the server's modules would be playing by other rules: no join until the game restarts
         if (safeMode) {
@@ -184,12 +185,12 @@ public final class ModuleManager {
         } catch (IOException e) {
             LOG.warn("Cannot write {}", activeMarker, e);
         }
-        for (Candidate candidate : coldOrder) {
-            if (candidate.manifest.deps().keySet().stream().allMatch(this::isRunning)) enableMod(candidate);
-        }
         for (Candidate candidate : order) {
             if (candidate.manifest.deps().keySet().stream().allMatch(this::isRunning)) {
-                enable(candidate);
+                String problem = hooks.problem(candidate.manifest);
+                if (problem != null) LOG.warn("Module {}: {}", candidate.manifest.id(), problem);
+                else if (candidate.manifest.hot()) enable(candidate);
+                else enableMod(candidate);
             } else {
                 LOG.warn("Module {} is not started: a module it depends on failed", candidate.manifest.id());
             }
@@ -220,13 +221,15 @@ public final class ModuleManager {
                     .stream().filter(e -> e.getProvider().getMetadata().getId().equals(manifest.id())).toList();
             if (entries.size() != 1) throw new IllegalStateException("Expected one server-scoped entrypoint for " + manifest.id());
             DumServerMod instance = entries.getFirst().getEntrypoint();
-            RunningModule module = new RunningModule(manifest, candidate.jar, null, instance, root.resolve("data").resolve(manifest.id()), keys, events, active);
+            RunningModule module = new RunningModule(manifest, candidate.jar, null, instance, root.resolve("data").resolve(manifest.id()), keys, events, hooks, active);
             running.add(module);
             try {
                 instance.onEnable(module);
                 LOG.info("Server-scoped Fabric mod {} {} is prepared", manifest.id(), manifest.version());
             } catch (RuntimeException | LinkageError e) {
                 fail(module, "запуск мода", e);
+            } finally {
+                module.finishInitialization();
             }
         } catch (RuntimeException | LinkageError e) {
             LOG.error("Cannot prepare server-scoped Fabric mod {}", manifest.id(), e);
@@ -411,7 +414,7 @@ public final class ModuleManager {
         RunningModule module;
         try {
             DumModule instance = loader.loadClass(manifest.entrypoint()).asSubclass(DumModule.class).getConstructor().newInstance();
-            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys, events, active);
+            module = new RunningModule(manifest, candidate.jar, loader, instance, root.resolve("data").resolve(manifest.id()), keys, events, hooks, active);
         } catch (ReflectiveOperationException | ClassCastException | LinkageError e) {
             LOG.error("Cannot create module {} from {}", manifest.id(), manifest.entrypoint(), e);
             close(loader, manifest.id());
@@ -423,6 +426,8 @@ public final class ModuleManager {
             LOG.info("Module {} {} is on", manifest.id(), manifest.version());
         } catch (RuntimeException | LinkageError e) {
             fail(module, "запуск", e);
+        } finally {
+            module.finishInitialization();
         }
     }
 
@@ -431,8 +436,11 @@ public final class ModuleManager {
      * it gets no more calls.
      */
     void fail(RunningModule module, String where, Throwable error) {
-        if (module.failed) return;
-        module.failed = true;
+        synchronized (module) {
+            if (module.failed) return;
+            module.failed = true;
+        }
+        boolean inPlay = active.getAsBoolean();
         LOG.error("Module {} failed in {}, turning it off", module.id(), where, error);
         failures.add(new Failure(module.id(), where, error.toString(), LocalTime.now().withNano(0)));
         DumSdkClient.recordError("MODULE_RUNTIME", module.id() + " (" + where + "): " + error);
@@ -440,6 +448,10 @@ public final class ModuleManager {
         minecraft.execute(() -> {
             if (!running.contains(module)) return;
             stop(module);
+            if (inPlay && active.getAsBoolean() && minecraft.getConnection() != null) {
+                DumSdkClient.reportModuleFailure(module.id(), where, error);
+                return;
+            }
             // A required module (or one it took down) is gone: playing on would be playing by other rules
             if (!missingRequired(required, this::isRunning).isEmpty() && minecraft.getConnection() != null) {
                 minecraft.getConnection().getConnection().disconnect(Component.literal("Модуль DUM-SDK " + module.id()

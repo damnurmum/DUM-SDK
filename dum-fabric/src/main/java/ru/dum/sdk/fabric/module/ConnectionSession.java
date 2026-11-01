@@ -9,6 +9,7 @@ public final class ConnectionSession {
     private boolean catalog;
     private boolean installed;
     private boolean joined;
+    private boolean terminal;
     private volatile boolean active;
 
     public synchronized long begin(Object owner) {
@@ -44,19 +45,25 @@ public final class ConnectionSession {
     public synchronized void installed(long generation) {
         if (current(generation) && catalog) {
             installed = true;
-            active = joined;
+            active = joined && !terminal;
         }
     }
 
     public synchronized void joined(Object owner) {
         if (this.owner == owner) {
             joined = true;
-            active = welcomed && catalog && installed;
+            active = welcomed && catalog && installed && !terminal;
         }
     }
 
     public boolean active() {
         return active;
+    }
+
+    /** Retain ownership for cleanup while waiting for the server's terminal kick message. */
+    public synchronized void deactivate() {
+        terminal = true;
+        active = false;
     }
 
     public synchronized boolean owns(Object owner) {
@@ -71,5 +78,6 @@ public final class ConnectionSession {
         catalog = false;
         installed = false;
         joined = false;
+        terminal = false;
     }
 }

@@ -128,6 +128,41 @@ public final class DumSdkClient implements ClientModInitializer {
         return SESSION.active();
     }
 
+    /** Report before disconnecting, allowing Paper to receive the failure and provide its configured kick text. */
+    public static void reportModuleFailure(String module, String where, Throwable error) {
+        Minecraft client = Minecraft.getInstance();
+        Attempt current = attempt;
+        var play = client.getConnection();
+        if (!SESSION.active() || current == null || play == null) return;
+        Component fallback = Component.literal("Модуль DUM-SDK " + module + " перестал работать.\n\n"
+                + "Зайди на сервер снова. Если ошибка повторится, сообщи администратору.\n\nКод: MODULE_RUNTIME");
+        boolean sent = false;
+        try {
+            var report = new Message.ModuleFailure(module, diagnosticLine(where, Protocol.MAX_FAILURE_CONTEXT),
+                    diagnosticLine(error.toString(), Protocol.MAX_ERROR_DETAIL));
+            ClientPlayNetworking.send(new SdkPayload(Protocol.encode(report)));
+            sent = true;
+        } catch (RuntimeException e) {
+            LOG.warn("Cannot report module runtime failure to the server", e);
+        } finally {
+            SESSION.deactivate();
+            MODULES.stop();
+        }
+        if (!sent) {
+            play.getConnection().disconnect(fallback);
+            return;
+        }
+        CompletableFuture.delayedExecutor(3, java.util.concurrent.TimeUnit.SECONDS).execute(() -> client.execute(() -> {
+            if (attempt == current && client.getConnection() == play) play.getConnection().disconnect(fallback);
+        }));
+    }
+
+    private static String diagnosticLine(String text, int limit) {
+        String cleaned = text.replaceAll("[\\p{Cntrl}\\u2028\\u2029]", " ").strip();
+        if (cleaned.isEmpty()) return "Unknown";
+        return cleaned.substring(0, Math.min(cleaned.length(), limit));
+    }
+
     /** Active only for an installed Fabric mod accepted by this server's catalog. */
     public static boolean modActive(String id) {
         return MODULES.modActive(id);
@@ -313,6 +348,7 @@ public final class DumSdkClient implements ClientModInitializer {
             case Message.Request request -> LOG.warn("Ignoring unexpected {} from the server", request.getClass().getSimpleName());
             case Message.Ready ready -> LOG.warn("Ignoring unexpected {} from the server", ready.getClass().getSimpleName());
             case Message.Restart restart -> LOG.warn("Ignoring unexpected {} from the server", restart.getClass().getSimpleName());
+            case Message.ModuleFailure failure -> LOG.warn("Ignoring unexpected {} from the server", failure.getClass().getSimpleName());
         }
     }
 

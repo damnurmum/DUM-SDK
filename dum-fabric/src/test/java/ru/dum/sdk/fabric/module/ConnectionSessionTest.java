@@ -40,6 +40,33 @@ class ConnectionSessionTest {
     }
 
     @Test
+    void terminalRuntimeFailureDeactivatesButRetainsOwnershipUntilDisconnect() {
+        var session = new ConnectionSession();
+        Object sdk = new Object();
+        long ticket = session.begin(sdk);
+        session.welcome(sdk, true);
+        session.catalog(sdk);
+        session.installed(ticket);
+        session.joined(sdk);
+        assertTrue(session.active());
+        session.deactivate();
+        assertFalse(session.active());
+        assertTrue(session.owns(sdk));
+        session.installed(ticket);
+        session.joined(sdk);
+        assertFalse(session.active());
+        session.close();
+        assertFalse(session.owns(sdk));
+        Object next = new Object();
+        long fresh = session.begin(next);
+        session.welcome(next, true);
+        session.catalog(next);
+        session.installed(fresh);
+        session.joined(next);
+        assertTrue(session.active());
+    }
+
+    @Test
     void previousConnectionCannotFinishInstallationOnNewOrDisconnectedSession() {
         var session = new ConnectionSession();
         Object old = new Object();

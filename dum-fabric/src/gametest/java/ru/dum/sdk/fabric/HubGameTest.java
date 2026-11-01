@@ -124,16 +124,13 @@ final class HubGameTest {
         check(fail != null, "fixture registered its failure key");
         context.runOnClient(client -> { fail.setKey(InputConstants.getKey("key.keyboard.f8")); KeyMapping.resetMapping(); });
         context.getInput().pressKey(fail);
-        context.waitTicks(25);
-        context.setScreen(() -> new DiagnosticsScreen(null, DiagnosticsScreen.Tab.MODS));
-        context.runOnClient(client -> cards(client.gui.screen()).keyPressed(new KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0)));
-        check(text(context).contains("Не запущен") && DumSdkClient.serverActive(), "failed optional module remains listed without ending the session");
-        context.runOnClient(client -> client.gui.screen().onClose());
+        context.waitFor(client -> client.gui.screen() instanceof DisconnectedScreen, TIMEOUT);
+        context.runOnClient(client -> check(!DumSdkClient.serverActive()
+                && client.gui.screen().getNarrationMessage().getString().contains("MODULE_RUNTIME"), "an optional runtime failure requests rejoin with its stable code"));
+        context.waitFor(client -> client.gui.overlay() == null, TIMEOUT);
+        context.setScreen(() -> new DiagnosticsScreen(null));
         click(context, "Ошибки");
         check(text(context).contains("hubprobe"), "failure details are available in diagnostics");
-        context.runOnClient(Minecraft::disconnectWithProgressScreen);
-        context.waitFor(client -> client.level == null, TIMEOUT);
-        context.waitFor(client -> client.gui.overlay() == null, TIMEOUT);
         context.setScreen(() -> new DiagnosticsScreen(null));
         context.runOnClient(client -> check(!has(client.gui.screen(), "Модификации") && ModInventory.snapshot().isEmpty(), "disconnect removes server controls and inventory"));
         context.setScreen(TitleScreen::new);

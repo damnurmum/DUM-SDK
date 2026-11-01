@@ -41,6 +41,18 @@ public final class TransferValidation {
         }
     }
 
+    public static void failure(Message.ModuleFailure failure) {
+        if (!moduleId(failure.module()) || !diagnosticLine(failure.where(), Protocol.MAX_FAILURE_CONTEXT)
+                || !diagnosticLine(failure.detail(), Protocol.MAX_ERROR_DETAIL)) {
+            throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Invalid module failure report");
+        }
+    }
+
+    private static boolean diagnosticLine(String value, int limit) {
+        return value != null && !value.isBlank() && value.length() <= limit
+                && value.chars().noneMatch(c -> Character.isISOControl(c) || c == 0x2028 || c == 0x2029);
+    }
+
     private static void invalid(String module, String detail) {
         throw new ProtocolException(ErrorCode.INVALID_CATALOG, module, detail);
     }
