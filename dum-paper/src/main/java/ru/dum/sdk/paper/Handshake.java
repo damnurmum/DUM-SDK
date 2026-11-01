@@ -46,10 +46,11 @@ final class Handshake implements Listener {
         /** Hashes of the jars this player was offered: only these may be downloaded. */
         volatile Set<String> offered = Set.of();
         volatile boolean catalogSent;
+        /** Disconnected for a protocol violation: later messages of this connection are ignored, not logged again. */
+        volatile boolean rejected;
         final Set<String> requested = ConcurrentHashMap.newKeySet();
     }
 
-    // ponytail: an entry stays if a client says HELLO but disconnects before the configure event; tiny, cleared on restart
     private final Map<PlayerConnection, Pending> pending = new ConcurrentHashMap<>();
 
     Handshake(DumSdk plugin) {
@@ -57,7 +58,11 @@ final class Handshake implements Listener {
     }
 
     void enable() {
-        if (enabled || !plugin.getConfig().getBoolean("handshake.enabled", true)) return;
+        if (enabled) return;
+        if (!plugin.getConfig().getBoolean("handshake.enabled", true)) {
+            // Turning the handshake off would let players in without the mandatory client mod
+            plugin.getSLF4JLogger().warn("handshake.enabled: false is no longer supported and is ignored; remove it from config.yml");
+        }
         helloTimeout = plugin.getConfig().getInt("handshake.hello-timeout-seconds", 10);
         installTimeout = plugin.getConfig().getInt("handshake.install-timeout-seconds", 120);
         enabled = true;
@@ -84,6 +89,7 @@ final class Handshake implements Listener {
     void received(PlayerConfigurationConnection connection, byte[] data) {
         if (!enabled) return;
         Pending state = pending(connection);
+        if (state.rejected) return;
         Message message;
         try {
             message = Protocol.decode(data);
@@ -111,7 +117,8 @@ final class Handshake implements Listener {
             }
             case Message.Ready ready -> result(connection, state, ready);
             case Message.Restart restart -> result(connection, state, restart);
-            default -> plugin.getSLF4JLogger().warn("Unexpected {} during configuration", message.getClass().getSimpleName());
+            // The SDK client never sends anything else here
+            default -> reject(connection, state, ErrorCode.MALFORMED_MESSAGE, "Unexpected " + message.getClass().getSimpleName() + " during configuration");
         }
     }
 
@@ -122,6 +129,8 @@ final class Handshake implements Listener {
     }
 
     private void reject(PlayerConfigurationConnection connection, Pending state, ErrorCode code, String detail) {
+        if (state.rejected) return;
+        state.rejected = true;
         plugin.getSLF4JLogger().warn("[{}] {}: {}", code, connection.getProfile().getName(), detail);
         connection.disconnect(InstallErrors.message(plugin.messages(), new Message.Ready(code, "", detail)));
         state.hello.cancel(false);
@@ -129,6 +138,10 @@ final class Handshake implements Listener {
     }
 
     private Pending pending(PlayerConnection connection) {
+        Pending state = pending.get(connection);
+        if (state != null) return state;
+        // A client may say HELLO and leave before the configure event that would remove its entry
+        pending.keySet().removeIf(c -> !c.isConnected());
         return pending.computeIfAbsent(connection, c -> new Pending());
     }
 
@@ -145,6 +158,12 @@ final class Handshake implements Listener {
     public void onConfigure(AsyncPlayerConnectionConfigureEvent event) {
         PlayerConfigurationConnection connection = event.getConnection();
         String name = connection.getProfile().getName();
+        if (plugin.unavailable()) {
+            plugin.getSLF4JLogger().warn("{} is refused: DUM-SDK could not load its published modules", name);
+            connection.disconnect(plugin.messages().get("core.unavailable"));
+            pending.remove(connection);
+            return;
+        }
         long epoch = plugin.catalogEpoch();
         if (!current(connection, epoch)) return;
         Pending state = pending(connection);

@@ -48,9 +48,21 @@ public final class TransferValidation {
         }
     }
 
+    /** Turns any text into a line that {@link #failure} accepts: the same characters are rejected there. */
+    public static String cleanLine(String text, int limit) {
+        StringBuilder line = new StringBuilder(text.length());
+        text.chars().forEach(c -> line.append(lineBreaking(c) ? ' ' : (char) c));
+        String cleaned = line.toString().strip();
+        if (cleaned.isEmpty()) return "Unknown";
+        return cleaned.substring(0, Math.min(cleaned.length(), limit));
+    }
+
     private static boolean diagnosticLine(String value, int limit) {
-        return value != null && !value.isBlank() && value.length() <= limit
-                && value.chars().noneMatch(c -> Character.isISOControl(c) || c == 0x2028 || c == 0x2029);
+        return value != null && !value.isBlank() && value.length() <= limit && value.chars().noneMatch(TransferValidation::lineBreaking);
+    }
+
+    private static boolean lineBreaking(int c) {
+        return Character.isISOControl(c) || c == 0x2028 || c == 0x2029;
     }
 
     private static void invalid(String module, String detail) {

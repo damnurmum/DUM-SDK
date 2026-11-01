@@ -38,6 +38,7 @@ import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.ProtocolException;
 import ru.dum.sdk.network.ErrorCode;
 import ru.dum.sdk.network.Protocol;
+import ru.dum.sdk.network.TransferValidation;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -138,8 +139,8 @@ public final class DumSdkClient implements ClientModInitializer {
                 + "Зайди на сервер снова. Если ошибка повторится, сообщи администратору.\n\nКод: MODULE_RUNTIME");
         boolean sent = false;
         try {
-            var report = new Message.ModuleFailure(module, diagnosticLine(where, Protocol.MAX_FAILURE_CONTEXT),
-                    diagnosticLine(error.toString(), Protocol.MAX_ERROR_DETAIL));
+            var report = new Message.ModuleFailure(module, TransferValidation.cleanLine(where, Protocol.MAX_FAILURE_CONTEXT),
+                    TransferValidation.cleanLine(error.toString(), Protocol.MAX_ERROR_DETAIL));
             ClientPlayNetworking.send(new SdkPayload(Protocol.encode(report)));
             sent = true;
         } catch (RuntimeException e) {
@@ -155,12 +156,6 @@ public final class DumSdkClient implements ClientModInitializer {
         CompletableFuture.delayedExecutor(3, java.util.concurrent.TimeUnit.SECONDS).execute(() -> client.execute(() -> {
             if (attempt == current && client.getConnection() == play) play.getConnection().disconnect(fallback);
         }));
-    }
-
-    private static String diagnosticLine(String text, int limit) {
-        String cleaned = text.replaceAll("[\\p{Cntrl}\\u2028\\u2029]", " ").strip();
-        if (cleaned.isEmpty()) return "Unknown";
-        return cleaned.substring(0, Math.min(cleaned.length(), limit));
     }
 
     /** Active only for an installed Fabric mod accepted by this server's catalog. */

@@ -1,4 +1,4 @@
-# DUM-SDK menu (unreleased)
+# DUM-SDK menu (SDK 0.15.0)
 
 Open Settings and choose DUM-SDK in the main button grid, in the title menu or while playing. The button is appended through the original two-column row helper, preserving the order of other mods that share that helper. `/sdk` opens the same screen from the game. Escape/Back returns to the parent screen.
 

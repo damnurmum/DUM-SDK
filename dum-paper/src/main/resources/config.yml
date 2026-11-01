@@ -3,8 +3,8 @@
 # Handshake with the DUM-SDK client mod in the configuration phase, before the player enters the world:
 # version check, then the client installs the signed modules from plugins/DUM-SDK/modules.
 # Players without the mod, with an incompatible version or failed modules are disconnected with an explanation.
+# It is always on: the client mod is mandatory.
 handshake:
-  enabled: true
   hello-timeout-seconds: 10     # how long to wait for the client's HELLO
   install-timeout-seconds: 120  # how long the client may take to download and check modules
 

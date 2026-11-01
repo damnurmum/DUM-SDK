@@ -1,8 +1,6 @@
 # SDK protocol
 
-SDK 0.14.2 uses protocol 5. SDK 0.14.1 uses protocol 4. Update both client and Paper together for this wire change.
-
-Unreleased development uses protocol 6 for runtime failure reports. The published SDK version stays 0.14.2 until a release is requested. Use matching development client/Paper builds; published protocol 5 clients cannot join a protocol 6 server. This is not a published SDK release.
+SDK 0.15.0 uses protocol 6, which adds runtime failure reports. SDK 0.14.2 uses protocol 5 and SDK 0.14.1 protocol 4. Update both client and Paper together for each wire change: protocol 5 clients cannot join a protocol 6 server.
 
 The server accepts matching protocol numbers. `sdkVersion` is shown in diagnostics; it is not an enforced minimum or a comparison with the latest GitHub release. Capability negotiation is not implemented.
 
@@ -26,7 +24,7 @@ Paper logs the reported code, module and diagnostic detail. Player-facing text c
 
 The overall download memory budget, concurrency and bandwidth policy are unchanged. Checking a packet's correctness does not cap the combined size of many valid files or simultaneous clients. Resource budgeting remains separate work.
 
-## Runtime failure reports (unreleased, protocol 6)
+## Runtime failure reports (SDK 0.15.0, protocol 6)
 
 `MODULE_FAILURE` (type 8, client to server in play) contains three modified-UTF strings: module ID, callback context (1-128 characters), and diagnostic detail (1-1024 characters). IDs must be valid/nonempty; context/detail must be nonblank single lines without control characters or Unicode line separators. Both encoding and decoding validate them and reject trailing/truncated data. Error code `MODULE_RUNTIME` has stable ID 18. Installation messages and the stable HELLO prefix keep their framing.
 

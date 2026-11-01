@@ -9,6 +9,10 @@ core:
   published-selected: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <gradient:#ffe29f:#ffc078>Обновлены: <white><modules></white>. Остальные моды и модули без изменений. Игроки отключены для обновления."
   publish-selected-failed: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <red>Не удалось обновить: <white><modules></white>. Проверь jar, подписи и ID. Подробности в консоли."
   publish-failed: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <red>Не удалось обновить модули. Подробности в консоли."
+  # Some modules were published with a lower version than before. <modules>: "id version" of each
+  publish-rollback: "<#ffb347>⚙</#ffb347> <gradient:#ffb347:#ffcc33><bold>DUM-SDK</bold></gradient> <dark_gray>|</dark_gray> <yellow>Версии ниже прежних: <white><modules></white>. Игроки с новой версией не смогут зайти (VERSION_ROLLBACK). Опубликуй исправление с номером выше."
+  # The published modules could not be loaded at startup: nobody can join until /dumsdk reload succeeds
+  unavailable: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Сервер <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> временно недоступен.<newline><gray>Попробуй зайти позже. Если не помогло, напиши DUM."
   reconnect: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> обновлены.<newline><gray>Зайди на сервер снова. Если игра попросит, перезапусти её."
 
 handshake:
@@ -29,6 +33,8 @@ handshake:
 
 runtime:
   failed: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Модуль <gradient:#ffb347:#ffcc33><module></gradient> перестал работать.<newline><newline><gray>Зайди на сервер снова. Если ошибка повторится, сообщи администратору.<newline>Подробности: Настройки > DUM-SDK > Ошибки."
+  # The client sent a message that the DUM-SDK client never sends
+  malformed: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Клиент <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> прислал некорректное сообщение.<newline><gray>Зайди на сервер снова. Если повторится, напиши DUM."
 
 limits:
   # A client sent the server side of a module far more messages than any normal play does. <module>: its id

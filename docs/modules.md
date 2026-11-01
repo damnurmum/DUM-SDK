@@ -55,7 +55,7 @@ Build the SDK jar first (`./gradlew :dum-fabric:jar` in the SDK checkout). The p
 - `version`: semantic version. Clients never go back to an older version of a module they have run, so publish fixes as new versions.
 - `apiVersion`: the SDK API the module is built for (`ModuleManager.API_VERSION`, now 1).
 - `dependencies`: other modules, with Fabric version predicates. Dependencies start first and stop last.
-- `name`, `description`, `authors` (optional, unreleased menu): display name, description string and an array of author names for the DUM-SDK Modifications page. Omitted names fall back to `id`; missing descriptions/authors are not invented. Unsupported presentation shapes are ignored and do not stop an otherwise valid legacy module. Descriptions are displayed verbatim, so use the language intended for players.
+- `name`, `description`, `authors` (optional, SDK 0.15.0 menu): display name, description string and an array of author names for the DUM-SDK Modifications page. Omitted names fall back to `id`; missing descriptions/authors are not invented. Unsupported presentation shapes are ignored and do not stop an otherwise valid legacy module. Descriptions are displayed verbatim, so use the language intended for players.
 - `required` (default `true`): without the module the player would play by other rules. If it does not start, the server refuses the join; if it fails in game, the player is disconnected with the reason. Set `false` only for modules that change nothing in the game, such as pure cosmetics.
 
 ### Lifecycle and threads
@@ -66,7 +66,7 @@ The client accepts a catalog only after a compatible WELCOME on that same connec
 
 Unless stated otherwise, callbacks run on the render thread.
 
-A module that throws anywhere the SDK calls it is turned off and the Errors tab in Settings > DUM-SDK shows the error (`/sdk` opens the menu). Unreleased runtime policy: a failure during play, including an optional module or a managed cold mod callback, notifies Paper and ends the entire SDK session with a Russian rejoin message and `MODULE_RUNTIME`. Rejoining starts fresh instances/contexts. During installation, required startup failures still prevent entry; optional startup failures can stay disabled. Errors in arbitrary native/mixin code outside managed callbacks are not automatically intercepted.
+A module that throws anywhere the SDK calls it is turned off and the Errors tab in Settings > DUM-SDK shows the error (`/sdk` opens the menu). Runtime policy since SDK 0.15.0: a failure during play, including an optional module or a managed cold mod callback, notifies Paper and ends the entire SDK session with a Russian rejoin message and `MODULE_RUNTIME`. Rejoining starts fresh instances/contexts. During installation, required startup failures still prevent entry; optional startup failures can stay disabled. Errors in arbitrary native/mixin code outside managed callbacks are not automatically intercepted.
 
 ### DumContext
 
@@ -83,8 +83,8 @@ A module that throws anywhere the SDK calls it is turned off and the Errors tab 
 | `key(name, defaultKey, onPress)` | A key in Controls under DUM; title from the lang key `key.<module>.<name>`; bindings are kept |
 | `addEntity(Entity)` | A client-only entity, such as a display entity; gone with the level, check `isRemoved()` |
 | `on(Event, listener)` | Any Fabric API event: world rendering, input, interaction, lifecycle... |
-| `provideHook(HookKey, Event)` | Unreleased: publish a versioned EventFactory event during a server-scoped Fabric mod's `onEnable` |
-| `onHook(HookKey, listener)` | Unreleased: subscribe through a declared hook contract; callbacks and removal are session-scoped |
+| `provideHook(HookKey, Event)` | SDK 0.15.0: publish a versioned EventFactory event during a server-scoped Fabric mod's `onEnable` |
+| `onHook(HookKey, listener)` | SDK 0.15.0: subscribe through a declared hook contract; callbacks and removal are session-scoped |
 | `onReceive(Class, Predicate)` | Every packet of that type from the server, before the game handles it; return false to drop it |
 | `onSend(Class, Predicate)` | Every packet of that type the client sends; return false to drop it (called on the sending thread) |
 | `onServerMessage(Consumer<byte[]>)`, `sendToServer(byte[])` | Talking to the module's server side |
@@ -101,7 +101,7 @@ These definitions do not add native registry entries, item physics or server gam
 
 `ServerSession.active()` reports whether this connection completed handshake, installation and play join. For a cold mod use `ServerSession.active("my_mod")` instead: another SDK server may not have that mod in its catalog. `context.active()` refers to that exact context and stays false after unload, even when the same mod rejoins. Hot and cold registrations through `DumContext` are scoped automatically.
 
-### Versioned hooks from Fabric mods (unreleased)
+### Versioned hooks from Fabric mods (SDK 0.15.0)
 
 A cold mod installs its mixins and public listener interfaces once when Fabric starts the game. Its SDK `onEnable` publishes named hook contracts for this accepted catalog; hot modules subscribe without shipping their own mixins. Providers and consumers are resolved in one dependency order, with providers first. The provider jar must already be loaded and match the signed catalog. Changing the provider's code/mixins still requires a game restart. Adding or updating a hot consumer of an existing hook needs only a server rejoin.
 
@@ -170,7 +170,9 @@ sdk.sendToModule(player, "info", bytes); // from PlayerJoinEvent on
 
 The module's data format is its own business; follow the [fair play rules](#fair-play-the-rules-every-module-follows): the server decides and checks, and sends only what the player may know (the `info` accessories send only "slot N was clicked", and the server decides what happens).
 
-Unreleased: listen for `ru.dum.sdk.paper.api.ClientModuleFailureEvent` to observe a managed runtime failure. The event exposes `module()`, `where()` and `detail()` plus the player. It runs after all SDK grants are revoked and before the reconnect kick; `sdk.hasModule` is already false. It cannot cancel the kick. Treat diagnostics as untrusted bounded client reports and use them for logging/cleanup, not gameplay rewards or validation. Missing `runtime.failed` text in old `messages.yml` files falls back to the bundled Russian message.
+Since SDK 0.15.0, listen for `ru.dum.sdk.paper.api.ClientModuleFailureEvent` to observe a managed runtime failure. The event exposes `module()`, `where()` and `detail()` plus the player. It runs after all SDK grants are revoked and before the reconnect kick; `sdk.hasModule` is already false. It cannot cancel the kick. Treat diagnostics as untrusted bounded client reports and use them for logging/cleanup, not gameplay rewards or validation. Missing `runtime.failed` text in old `messages.yml` files falls back to the bundled Russian message.
+
+Reloading DUM-SDK without a server restart (plugman) creates a new plugin instance with new classes. Online players keep their module access, restored from the published catalog, but a plugin that serves a module still holds the previous instance: reload it together with DUM-SDK. Until then, its `sendToModule` sends nothing and its handlers receive nothing.
 
 DUM-SDK enforces part of the rules itself, so a module cannot forget them:
 
@@ -185,9 +187,13 @@ The server itself should not leak either: Paper's anti-xray hides ores the playe
 2. In the module's own build, run its signing/deployment task. The external example projects provide `./gradlew :<project>:deploy`, which signs the jar and copies it with its `.sig` there.
 3. `/dumsdk reload` on the server publishes the staged jars and disconnects online players with a message to rejoin. Rejoining players download changed modules once and then use the cache. A whole Fabric mod still needs a game restart after the rejoin. Until publication, even a Paper restart keeps using the last published catalog. On the first startup after upgrading, the existing `modules` folder becomes the initial published catalog. If a staged jar is invalid, publication fails and the old catalog stays active.
 
-Selective publication (unreleased): `/dumsdk reload <id> [id ...]` takes only the selected IDs from staging and preserves every other published jar byte for byte. IDs come from `dum-module.json` or `fabric.mod.json`, not jar filenames. For example, `/dumsdk reload info wings` publishes those two entries together, leaving any unrelated staged updates unpublished. Tab completion suggests IDs in the current published catalog; a new staged ID can also be entered directly.
+Selective publication (SDK 0.15.0): `/dumsdk reload <id> [id ...]` takes only the selected IDs from staging and preserves every other published jar byte for byte. IDs come from `dum-module.json` or `fabric.mod.json`, not jar filenames. For example, `/dumsdk reload info wings` publishes those two entries together, leaving any unrelated staged updates unpublished. Tab completion suggests IDs in the current published catalog; a new staged ID can also be entered directly.
 
 All selected jars must exist with valid signatures and unique IDs. If any selected entry fails validation, neither the current catalog nor its persistent pointer changes, and online players remain connected. Unselected broken/missing staged jars do not prevent a selective publication. Select related dependency updates together: the client still validates the resulting versions/dependencies on rejoin. Selection does not automatically publish dependencies. Removing an entry still requires the full `/dumsdk reload` after removing its staged jar.
+
+If a module gets a lower version than the one published before, publication still succeeds but warns the administrator: clients that already installed the newer version refuse the older one with `VERSION_ROLLBACK` and cannot join. Publish the fix with a higher version instead.
+
+If Paper cannot load the published catalog at startup (a broken jar, a missing snapshot or a signing key change), DUM-SDK stays enabled and refuses every join with the `core.unavailable` text, so nobody plays without the client mod. Fix the staged jars and run `/dumsdk reload`.
 
 Jar copying and signature verification run off the game thread. Only one publication runs at a time; concurrent attempts get a busy message, and new handshakes are refused until it finishes. Successful publication changes the catalog epoch and disconnects all online players, including players who did not receive the selected entry. Hot-module updates apply on rejoin. A Fabric-mod update is prepared on rejoin, then installed by the helper after the game closes. No running mod jar, mixin or native registry is replaced in place. This command publishes client artifacts; it does not reload their separate Paper gameplay plugins. Existing `messages.yml` files get missing publication messages from the bundled defaults.
 
@@ -228,7 +234,7 @@ The Paper plugin is standalone starting with 0.14.1: build it without DUM-Core o
 - `-Prelease` makes the dev client refuse dev-signed modules, like a player's client.
 - `-Psodium`, `-Piris` add Sodium and Iris; shader packs go into `dum-fabric/run/shaderpacks`.
 - The external `DUM-SDK-Examples` projects provide `sdktest` for rendering, events, packets and failures, and `dumcoldtest` for cold load. The SDK game test requires the external `info` and `sdktest` 0.4.0+ jars and `DUM-Runtime-Test` Paper fixture on its test server.
-- Settings > DUM-SDK (`/sdk` shortcut, unreleased): modules, time they take, Fabric mods from the server, pending restarts, updater status, persistent error codes and local crash/log files.
+- Settings > DUM-SDK (`/sdk` shortcut, SDK 0.15.0): modules, time they take, Fabric mods from the server, pending restarts, updater status, persistent error codes and local crash/log files.
 - `./gradlew :dum-fabric:runClientGameTest` joins a running test server and checks the SDK end to end; a module's own checks can follow the same pattern (`dum-fabric/src/gametest`).
 - Add `-PplainServer=localhost:25566` with a second Paper server without plugins to check that session effects remain off after switching from the SDK server to an ordinary one.
 

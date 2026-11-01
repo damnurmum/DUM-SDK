@@ -11,6 +11,7 @@ import ru.dum.sdk.network.ProtocolException;
 import ru.dum.sdk.network.ServerModContract;
 
 import java.io.ByteArrayInputStream;
+import java.math.BigInteger;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -136,6 +139,36 @@ final class ModuleCatalog {
         } catch (RuntimeException e) {
             throw new IOException("Invalid module metadata in " + jar.getFileName(), e);
         }
+    }
+
+    private static final Pattern SEMANTIC = Pattern.compile("(\\d+(?:\\.\\d+)*)(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?(?:\\+[0-9A-Za-z.-]+)?");
+
+    /**
+     * Semantic version order as the client's rollback check sees it: numeric parts, then a pre-release before
+     * its release. False when either version is not semantic, so only a warning can depend on it.
+     */
+    static boolean older(String version, String than) {
+        Matcher a = SEMANTIC.matcher(version), b = SEMANTIC.matcher(than);
+        if (!a.matches() || !b.matches()) return false;
+        int order = compareParts(a.group(1), b.group(1), true);
+        if (order == 0) {
+            if (a.group(2) == null || b.group(2) == null) return a.group(2) != null && b.group(2) == null;
+            order = compareParts(a.group(2), b.group(2), false);
+        }
+        return order < 0;
+    }
+
+    /** Numbers compare numerically and before text. A missing release part is 0; a shorter pre-release is lower. */
+    private static int compareParts(String a, String b, boolean release) {
+        String[] x = a.split("\\."), y = b.split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            if (!release && (i >= x.length || i >= y.length)) return Integer.compare(x.length, y.length);
+            String p = i < x.length ? x[i] : "0", q = i < y.length ? y[i] : "0";
+            boolean pn = p.chars().allMatch(Character::isDigit), qn = q.chars().allMatch(Character::isDigit);
+            int order = pn && qn ? new BigInteger(p).compareTo(new BigInteger(q)) : pn != qn ? (pn ? -1 : 1) : p.compareTo(q);
+            if (order != 0) return order;
+        }
+        return 0;
     }
 
     /** dum-module.json of a module, or fabric.mod.json of a whole Fabric mod (cold load). */

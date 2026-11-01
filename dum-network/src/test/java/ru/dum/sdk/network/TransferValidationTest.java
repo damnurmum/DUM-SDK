@@ -56,6 +56,17 @@ class TransferValidationTest {
         assertEquals(Message.Ready.success(), Protocol.decode(Protocol.encode(Message.Ready.success())));
     }
 
+    @Test
+    void cleanedFailureLinesAlwaysPassTheCodec() {
+        // C1 controls such as NEL are ISO controls too, not only ASCII ones
+        String detail = TransferValidation.cleanLine(" boom\u0085next\nline end\u0000 ", Protocol.MAX_ERROR_DETAIL);
+        assertEquals("boom next line end", detail);
+        var failure = new Message.ModuleFailure("info", TransferValidation.cleanLine("\u009f", 128), detail);
+        assertEquals("Unknown", failure.where());
+        assertEquals(failure, Protocol.decode(Protocol.encode(failure)));
+        assertEquals(Protocol.MAX_FAILURE_CONTEXT, TransferValidation.cleanLine("x".repeat(500), Protocol.MAX_FAILURE_CONTEXT).length());
+    }
+
     private static byte[] hash(int value) {
         byte[] result = new byte[32]; result[0] = (byte) value; return result;
     }

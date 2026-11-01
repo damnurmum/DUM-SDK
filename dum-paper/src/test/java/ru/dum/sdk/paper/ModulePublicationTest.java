@@ -16,6 +16,8 @@ import ru.dum.sdk.network.Message;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModulePublicationTest {
 
@@ -144,6 +146,35 @@ class ModulePublicationTest {
         publication.publish(catalog, log);
         assertEquals(1, catalog.modules().size());
         assertEquals("2.0.0", modules(catalog).get("alpha").version());
+    }
+
+    @Test
+    void publishingALowerVersionIsReportedAsARollback() throws IOException {
+        var publication = new ModulePublication(data);
+        var log = LoggerFactory.getLogger(getClass());
+        var catalog = new ModuleCatalog();
+        stage("alpha", "2.0.0", "alpha.jar");
+        publication.load(catalog, log);
+        var before = catalog.modules();
+        stage("alpha", "1.0.0", "alpha.jar");
+        publication.publish(catalog, log);
+        assertEquals(List.of("alpha 1.0.0"), DumSdk.rollbacks(before, catalog.modules()));
+        assertEquals(List.of(), DumSdk.rollbacks(catalog.modules(), before));
+    }
+
+    @Test
+    void versionOrderMatchesSemanticVersions() {
+        assertTrue(ModuleCatalog.older("1.9.9", "1.10.0"));
+        assertTrue(ModuleCatalog.older("1.0", "1.0.1"));
+        assertTrue(ModuleCatalog.older("1.0.0-beta.2", "1.0.0"));
+        assertTrue(ModuleCatalog.older("1.0.0-alpha", "1.0.0-alpha.1"));
+        assertTrue(ModuleCatalog.older("1.0.0-2", "1.0.0-rc"));
+        assertTrue(ModuleCatalog.older("1.0.0-beta.2", "1.0.0-beta.10"));
+        assertFalse(ModuleCatalog.older("1.0.0", "1.0.0+build.5"));
+        assertFalse(ModuleCatalog.older("1.0", "1.0.0"));
+        assertFalse(ModuleCatalog.older("2.0.0", "1.99.99"));
+        assertFalse(ModuleCatalog.older("1.0.0", "1.0.0-rc.1"));
+        assertFalse(ModuleCatalog.older("dev", "1.0.0"));
     }
 
     private void stage(String id, String version, String name) throws IOException {

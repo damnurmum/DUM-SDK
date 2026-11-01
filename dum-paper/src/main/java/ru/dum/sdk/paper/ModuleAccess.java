@@ -38,6 +38,11 @@ final class ModuleAccess {
         buckets.remove(player);
     }
 
+    void clear() {
+        granted.clear();
+        buckets.clear();
+    }
+
     boolean current(UUID player, long catalogEpoch) {
         Grant grant = granted.get(player);
         return grant != null && grant.catalogEpoch == catalogEpoch;
