@@ -7,3 +7,5 @@ accessible	field	net/minecraft/server/packs/repository/PackRepository	sources	Lj
 mutable	field	net/minecraft/server/packs/repository/PackRepository	sources	Ljava/util/Set;
 accessible	field	net/minecraft/client/KeyMapping	ALL	Ljava/util/Map;
 mutable	field	net/minecraft/client/Options	keyMappings	[Lnet/minecraft/client/KeyMapping;
+accessible	class	net/minecraft/client/MouseHandler$LastClick
+accessible	field	net/minecraft/client/MouseHandler	lastClick	Lnet/minecraft/client/MouseHandler$LastClick;

@@ -11,6 +11,7 @@ import net.fabricmc.loader.api.metadata.version.VersionPredicate;
 import net.fabricmc.loader.api.metadata.ModDependency;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
 import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -485,9 +486,18 @@ public final class ModuleManager {
             LOG.error("Module {} failed while turning off", module.id(), e);
         }
         module.clear();
-        if (module.loader != null) close(module.loader, module.id());
+        if (module.loader != null) {
+            forgetClick(module.loader);
+            close(module.loader, module.id());
+        }
         LOG.info("Module {} is off", module.id());
         if (module.loader != null && FabricLoader.getInstance().isDevelopmentEnvironment()) checkUnloaded(module.loader, module.id());
+    }
+
+    /** Vanilla keeps the last clicked screen for double clicks: a module's screen there would keep its classes loaded. */
+    private static void forgetClick(ClassLoader loader) {
+        MouseHandler mouse = Minecraft.getInstance().mouseHandler;
+        if (mouse.lastClick != null && mouse.lastClick.screen().getClass().getClassLoader() == loader) mouse.lastClick = null;
     }
 
     private static void close(URLClassLoader loader, String id) {
