@@ -60,6 +60,8 @@ final class HubGameTest {
         context.waitFor(client -> client.level != null && client.player != null || client.gui.screen() instanceof DisconnectedScreen, TIMEOUT);
         context.runOnClient(client -> check(DumSdkClient.serverActive(), "accepted server session is active"));
         context.setScreen(() -> new PauseScreen(true));
+        context.runOnClient(client -> check(!has(client.gui.screen(), "Модификации"), "the pause menu has no modifications shortcut"));
+        context.runOnClient(client -> DumSdkClient.openDiagnostics(client.gui.screen()));
         click(context, "Модификации");
         context.runOnClient(client -> client.gui.toastManager().clear());
         context.waitTicks(5);

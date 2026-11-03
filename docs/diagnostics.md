@@ -8,7 +8,7 @@ Open Settings and choose DUM-SDK in the main button grid, in the title menu or w
 - **Errors:** newest-first local history of up to 40 errors, with timestamps, stable installation/update codes and explanatory messages. History survives reconnects and normal restarts in `dum-sdk/diagnostics.json`. Errors loading/saving this history are shown too.
 - **Files:** the five most recent Minecraft crash reports from `crash-reports/` and JVM fatal reports (`hs_err_pid*.log`) in the game folder, ordered by modification time. A short bounded preview is read from the newest report in each folder. Buttons open the newest report, its folder, `logs/latest.log`, the logs folder, `dum-sdk/` and `dum-sdk/cold-apply.log`. Missing files have disabled actions; folders can be created when opened.
 
-While connected to an accepted SDK server, the pause menu shares its Options row with a Modifications shortcut. The SDK does not add this shortcut for ordinary servers or singleplayer. Compact windows shorten tab captions when necessary and keep the information panes scrollable.
+Compact windows shorten tab captions when necessary and keep the information panes scrollable.
 
 The summary copy action includes versions, state, error messages, modification IDs/versions/states and crash filenames/dates. It excludes client-log/crash-report contents and absolute game paths. Nothing is uploaded automatically. Error messages can contain module/server-provided diagnostics, so review a copied summary before sharing it. A forced termination or native crash does not always produce a report. No report means no report was found, not proof that the client did not crash.
 

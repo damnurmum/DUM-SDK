@@ -244,10 +244,6 @@ public final class DumSdkClient implements ClientModInitializer {
 
     public static List<ModuleManager.Details> moduleDetails() { return SESSION.active() ? MODULES.details() : List.of(); }
 
-    public static void openModifications(@Nullable Screen parent) {
-        if (serverActive()) Minecraft.getInstance().gui.setScreen(new DiagnosticsScreen(parent, DiagnosticsScreen.Tab.MODS));
-    }
-
     public static void openDiagnostics(@Nullable Screen parent) {
         Minecraft.getInstance().gui.setScreen(new DiagnosticsScreen(parent));
     }
