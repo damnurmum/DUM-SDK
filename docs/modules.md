@@ -33,7 +33,7 @@ dependencies {
     minecraft("com.mojang:minecraft:26.2")
     implementation("net.fabricmc:fabric-loader:0.19.5")
     implementation("net.fabricmc.fabric-api:fabric-api:0.161.0+26.2")
-    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-0.14.1.jar"))
+    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-Fabric-0.15.1.jar"))
 }
 ```
 

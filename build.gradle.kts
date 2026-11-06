@@ -67,7 +67,7 @@ tasks.register("prepareRelease") {
             ?: throw GradleException("Signing.RELEASE_KEY is missing")
         val factory = KeyFactory.getInstance("Ed25519")
         val key = factory.generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(encodedKey.trim())))
-        val client = file("dum-fabric/build/libs/DUM-SDK-$releaseVersion.jar").readBytes()
+        val client = file("dum-fabric/build/libs/DUM-SDK-Fabric-$releaseVersion.jar").readBytes()
         val paper = file("dum-paper/build/libs/DUM-SDK-Paper-$releaseVersion.jar").readBytes()
         val signature = Signature.getInstance("Ed25519").run {
             initSign(key)
@@ -84,8 +84,8 @@ tasks.register("prepareRelease") {
         dir.deleteRecursively()
         dir.mkdirs()
         val artifacts = linkedMapOf(
-            "DUM-SDK.jar" to client,
-            "DUM-SDK.jar.sig" to signature,
+            "DUM-SDK-Fabric-$releaseVersion.jar" to client,
+            "DUM-SDK-Fabric-$releaseVersion.jar.sig" to signature,
             "DUM-SDK-Paper-$releaseVersion.jar" to paper
         )
         artifacts.forEach { (name, bytes) -> File(dir, name).writeBytes(bytes) }

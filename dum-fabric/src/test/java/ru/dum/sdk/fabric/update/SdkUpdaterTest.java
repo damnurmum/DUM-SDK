@@ -78,8 +78,8 @@ class SdkUpdaterTest {
 
     @Test void wrongSignatureIsTerminalAndNeverStagesAnUpdate() throws Exception {
         byte[] release = ("{\"tag_name\":\"v0.14.3\",\"assets\":["
-                + "{\"name\":\"DUM-SDK.jar\",\"browser_download_url\":\"jar\"},"
-                + "{\"name\":\"DUM-SDK.jar.sig\",\"browser_download_url\":\"sig\"}]}").getBytes(StandardCharsets.UTF_8);
+                + "{\"name\":\"DUM-SDK-Fabric-0.14.3.jar\",\"browser_download_url\":\"jar\"},"
+                + "{\"name\":\"DUM-SDK-Fabric-0.14.3.jar.sig\",\"browser_download_url\":\"sig\"}]}").getBytes(StandardCharsets.UTF_8);
         var events = new ArrayList<UpdateStatus>();
         UpdateStatus result = run(updater((url, limit) -> url.equals("release") ? release : new byte[64],
                 millis -> fail("A bad signature must not be retried")), events);

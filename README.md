@@ -75,11 +75,11 @@ DUM-Core independence starts with 0.14.1. The older v0.14.0 Paper artifact still
 
 ## Releasing the mod
 
-The mod updates itself from GitHub Releases: at every game start it checks the latest release and installs a newer `DUM-SDK.jar` only if its signature matches the release key. Since SDK 0.15.0, connection errors and temporary HTTP failures get up to three attempts with 5 and 15 second pauses, Russian progress/error notifications and a manual GitHub recommendation after failure. The diagnostics screen can start another check; concurrent checks and checks with a ready update are disabled.
+The mod updates itself from GitHub Releases: at every game start it checks the latest release and installs a newer `DUM-SDK-Fabric-<version>.jar` only if its signature matches the release key. Since SDK 0.15.0, connection errors and temporary HTTP failures get up to three attempts with 5 and 15 second pauses, Russian progress/error notifications and a manual GitHub recommendation after failure. The diagnostics screen can start another check; concurrent checks and checks with a ready update are disabled.
 
 Releases are published by [Release](.github/workflows/release.yml). Only when the author requests a release, update `version` in `gradle.properties`, prepare `.github/release-notes/<version>.md` from `.github/release-notes/UNRELEASED.md`, commit and push. Then run **Actions > Release > Run workflow** on `main`, or push the matching `v<version>` tag. Ordinary commits and branch pushes do not publish or change the version.
 
-The workflow builds and tests all projects, signs the client with repository secret `DUM_SIGNING_KEY`, verifies it against `Signing.RELEASE_KEY`, and publishes `DUM-SDK.jar`, `DUM-SDK.jar.sig`, `DUM-SDK-Paper-<version>.jar` and `SHA256SUMS.txt`. Missing descriptions, mismatched tags/versions and existing releases fail before publication. The release description comes directly from the versioned notes file.
+The workflow builds and tests all projects, signs the client with repository secret `DUM_SIGNING_KEY`, verifies it against `Signing.RELEASE_KEY`, and publishes `DUM-SDK-Fabric-<version>.jar` (the client mod), its `.sig`, `DUM-SDK-Paper-<version>.jar` (the server plugin) and `SHA256SUMS.txt`. Missing descriptions, mismatched tags/versions and existing releases fail before publication. The release description comes directly from the versioned notes file.
 
 `./gradlew --no-daemon prepareRelease` prepares the same files locally in `build/release` without publishing. It accepts the key from `DUM_SIGNING_KEY`, `-PdumSigningKey=<file>` or `~/.dum/signing.key`. See [release instructions](.github/release-notes/README.md).
 

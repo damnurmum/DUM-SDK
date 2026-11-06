@@ -25,5 +25,5 @@ jobs:
         with:
           name: DUM-SDK
           path: |
-            dum-fabric/build/libs/DUM-SDK-*.jar
+            dum-fabric/build/libs/DUM-SDK-Fabric-*.jar
             dum-paper/build/libs/DUM-SDK-Paper-*.jar

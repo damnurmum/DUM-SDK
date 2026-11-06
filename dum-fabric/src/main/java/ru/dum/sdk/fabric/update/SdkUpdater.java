@@ -36,7 +36,7 @@ import java.util.zip.ZipFile;
 
 /**
  * Updates DUM-SDK itself from GitHub Releases with bounded background retries; a newer version
- * whose DUM-SDK.jar is signed with the release key ({@link Signing}) is downloaded and replaces this jar after the
+ * whose DUM-SDK-Fabric-X.Y.Z.jar is signed with the release key ({@link Signing}) is downloaded and replaces this jar after the
  * game exits ({@link ColdApply}). Off in development, unless -Ddumsdk.updateTest=true.
  */
 public final class SdkUpdater {
@@ -131,8 +131,8 @@ public final class SdkUpdater {
             for (JsonElement asset : release.getAsJsonArray("assets")) {
                 String name = asset.getAsJsonObject().get("name").getAsString();
                 String url = asset.getAsJsonObject().get("browser_download_url").getAsString();
-                if (name.equals("DUM-SDK.jar")) jarUrl = url;
-                if (name.equals("DUM-SDK.jar.sig")) signatureUrl = url;
+                if (name.equals(jarName(version))) jarUrl = url;
+                if (name.equals(jarName(version) + ".sig")) signatureUrl = url;
             }
             if (jarUrl == null || signatureUrl == null) throw new IllegalArgumentException("Missing release assets");
         } catch (RuntimeException | VersionParsingException e) {
@@ -145,7 +145,7 @@ public final class SdkUpdater {
         if (!Signing.verify(jar, signature, allowDevKey)) {
             throw new Failure("UPDATE_SIGNATURE", "Подпись обновления не подходит. Файл не установлен.", false, null);
         }
-        Path staged = root.resolve("update").resolve("DUM-SDK-" + version + ".jar");
+        Path staged = root.resolve("update").resolve(jarName(version));
         try {
             Files.createDirectories(staged.getParent());
             Files.write(staged, jar);
@@ -163,6 +163,11 @@ public final class SdkUpdater {
         return version;
     }
 
+    /** The client's file in a release, in update/ and in mods/: DUM-SDK-Fabric-X.Y.Z.jar, its signature that plus .sig. */
+    static String jarName(String version) {
+        return "DUM-SDK-Fabric-" + version + ".jar";
+    }
+
     /** Jars downloaded for earlier updates: installed by now, or no longer wanted. */
     private void clearStaged() {
         Path staged = root.resolve("update");
@@ -178,7 +183,7 @@ public final class SdkUpdater {
     private void plan(Path staged, String version) throws IOException {
         Path mods = FabricLoader.getInstance().getGameDir().resolve("mods");
         List<String> operations = new ArrayList<>();
-        operations.add("copy\t" + staged.toAbsolutePath() + "\t" + mods.resolve("DUM-SDK-" + version + ".jar").toAbsolutePath());
+        operations.add("copy\t" + staged.toAbsolutePath() + "\t" + mods.resolve(jarName(version)).toAbsolutePath());
         ModOrigin origin = FabricLoader.getInstance().getModContainer("dum-sdk").orElseThrow().getOrigin();
         if (origin.getKind() == ModOrigin.Kind.PATH) {
             for (Path path : origin.getPaths()) {

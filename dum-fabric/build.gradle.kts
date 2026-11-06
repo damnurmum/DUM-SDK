@@ -3,7 +3,7 @@ plugins {
 }
 
 base {
-    archivesName = "DUM-SDK"
+    archivesName = "DUM-SDK-Fabric"
 }
 
 repositories {
