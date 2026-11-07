@@ -6,6 +6,7 @@
 	"description": "Client side of DUM-SDK: connects to the DUM server and runs the client modules it provides.",
 	"authors": ["DUM"],
 	"license": "MIT",
+	"icon": "assets/dum-sdk/icon.png",
 	"environment": "client",
 	"accessWidener": "dum-sdk.classtweaker",
 	"mixins": ["dum-sdk.mixins.json"],

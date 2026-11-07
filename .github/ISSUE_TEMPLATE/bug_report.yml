@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in DUM-SDK does not work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        In the game, open Settings > DUM-SDK (or type `/sdk`) and press **Скопировать диагностику** (Copy diagnostics), then paste it below. It holds the versions, the modules and the recent errors, without your chat or files.
+        A security problem goes to a [private report](https://github.com/damnurmum/DUM-SDK/security/advisories/new) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to repeat it
+      placeholder: |
+        1. Join the server
+        2. Open the profile
+        3. ...
+  - type: input
+    id: mod
+    attributes:
+      label: Mod version
+      description: In Settings > DUM-SDK, or the name of the jar in mods/.
+      placeholder: 0.16.0-alpha.2
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server and its plugin version
+      description: Which server, and the DUM-SDK plugin version if you know it (`/dumsdk`).
+  - type: dropdown
+    id: system
+    attributes:
+      label: System
+      options:
+        - Windows
+        - macOS
+        - Linux
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Pasted from Скопировать диагностику.
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Game log
+      description: The part of logs/latest.log around the error, if there is one.
+      render: text

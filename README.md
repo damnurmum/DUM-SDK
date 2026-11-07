@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/images/icon.png" alt="DUM-SDK" width="112">
+
 # DUM-SDK
 
 **Signed client modules for a Minecraft server.**<br>
@@ -44,6 +46,59 @@ A Fabric client mod and a Paper plugin: the server hands its players client-side
     <td></td>
   </tr>
 </table>
+
+## Installation
+
+**Players**
+
+1. Minecraft 26.2 with [Fabric Loader](https://fabricmc.net/use/) 0.19.5 or newer and [Fabric API](https://modrinth.com/mod/fabric-api) 0.161.0 or newer (Java 25).
+2. Download `DUM-SDK-Fabric-<version>.jar` from [Releases](https://github.com/damnurmum/DUM-SDK/releases) into `mods/`. Take the version the server runs.
+3. Join the server. Its modules download and start by themselves; a server with another DUM-SDK version offers to install its own.
+
+**Server owners**
+
+1. Paper 26.2 (Java 25). Put `DUM-SDK-Paper-<version>.jar` into `plugins/` and start the server once.
+2. Put signed module jars, each with its `.jar.sig`, into `plugins/DUM-SDK/modules` and run `/dumsdk reload` (permission `dumsdk.admin`). Players in game get them right away.
+3. Players need the client mod of exactly the plugin's version. Settings are in `plugins/DUM-SDK/config.yml`: modules for operators only, message limits, and `allow-dev-signed` for a development server only.
+
+## How it works
+
+Joining: the client installs the server's modules before it enters the world.
+
+```mermaid
+sequenceDiagram
+    participant C as Client (DUM-SDK mod)
+    participant S as Server (DUM-SDK plugin)
+    C->>S: HELLO: protocol, version, client mods
+    alt the same version
+        S->>C: WELCOME
+        S->>C: CATALOG: the modules for this player
+        C->>S: REQUEST: the jars missing from its cache
+        S->>C: CHUNK, CHUNK, ...
+        Note over C: SHA-256 and signature checked, modules started
+        C->>S: READY
+        Note over C,S: the player enters the world
+    else another version
+        S->>C: WELCOME with the server's version, then disconnect
+        Note over C: window: install the server's version?
+    end
+```
+
+Publishing: players in game get the new modules without reconnecting.
+
+```mermaid
+sequenceDiagram
+    participant A as Admin
+    participant S as Server
+    participant C as Client in game
+    A->>S: /dumsdk reload
+    S->>C: UPDATE: the player's new catalog
+    C->>S: REQUEST: the changed jars
+    S->>C: CHUNK, ...
+    Note over C: changed modules off, new ones on, resources reloaded
+    C->>S: UPDATED: the modules that started
+    Note over S: ClientModulesLoadedEvent: plugins send those modules their state
+```
 
 ## Features
 
