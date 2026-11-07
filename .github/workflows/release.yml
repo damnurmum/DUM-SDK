@@ -34,10 +34,18 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^version=//p' gradle.properties)"
-          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
-            echo '::error::gradle.properties must contain one stable X.Y.Z version'
+          # X.Y.Z is a release; X.Y.Z-alpha[.N] and X.Y.Z-beta[.N] come before it. The stage is part of the tag and files
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(alpha|beta)(\.[1-9][0-9]*)?)?$ ]]; then
+            echo '::error::gradle.properties must contain X.Y.Z, X.Y.Z-alpha[.N] or X.Y.Z-beta[.N]'
             exit 1
           fi
+          case "$version" in
+            *-alpha*) stage=Alpha ;;
+            *-beta*) stage=Beta ;;
+            *) stage=Release ;;
+          esac
+          title="DUM-SDK ${version%%-*} $stage"
+          if [[ "$version" == *-*.* ]]; then title="$title ${version##*.}"; fi
           tag="v$version"
           notes=".github/release-notes/$version.md"
           if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "$tag" ]]; then
@@ -64,6 +72,7 @@ jobs:
             echo "tag=$tag"
             echo "notes=$notes"
             echo "commit=$commit"
+            echo "title=$title"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v6
@@ -86,6 +95,7 @@ jobs:
           RELEASE_TAG: ${{ steps.metadata.outputs.tag }}
           RELEASE_NOTES: ${{ steps.metadata.outputs.notes }}
           RELEASE_COMMIT: ${{ steps.metadata.outputs.commit }}
+          RELEASE_TITLE: ${{ steps.metadata.outputs.title }}
         shell: bash
         run: |
           set -euo pipefail
@@ -96,5 +106,5 @@ jobs:
             "build/release/DUM-SDK-Paper-$RELEASE_VERSION.jar#Paper plugin (server)" \
             "build/release/SHA256SUMS.txt#SHA-256 sums" \
             --draft --target "$RELEASE_COMMIT" \
-            --title "DUM-SDK $RELEASE_VERSION" --notes-file "$RELEASE_NOTES"
+            --title "$RELEASE_TITLE" --notes-file "$RELEASE_NOTES"
           gh release edit "$RELEASE_TAG" --draft=false --latest

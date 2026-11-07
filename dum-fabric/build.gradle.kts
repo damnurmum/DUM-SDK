@@ -79,6 +79,9 @@ loom {
         if (project.hasProperty("hotSwap")) vmArg("-Ddumsdk.hotSwap=${project.property("hotSwap")}")
         // With -PhotSwap, -PhotSwapScenarios runs the update paths around a swap instead; =cold with -PhotSwapCold=<server-scoped Fabric mod jar>
         if (project.hasProperty("hotSwapScenarios")) vmArg("-Ddumsdk.hotSwapScenarios=${project.property("hotSwapScenarios")}")
+        // -PversionTest=<the test server's other DUM-SDK version>: the version window, against a local stand-in for GitHub
+        if (project.hasProperty("versionTest")) vmArgs("-Ddumsdk.versionTest=${project.property("versionTest")}",
+            "-Ddumsdk.updateTest=true", "-Ddumsdk.updateTagsUrl=http://127.0.0.1:47199/tags/")
         if (project.hasProperty("hotSwapCold")) vmArg("-Ddumsdk.hotSwapCold=${project.property("hotSwapCold")}")
         if (project.hasProperty("downloadTest")) vmArg("-Ddumsdk.downloadTest=true")
         if (project.hasProperty("standaloneTest")) vmArg("-Ddumsdk.standaloneTest=true")

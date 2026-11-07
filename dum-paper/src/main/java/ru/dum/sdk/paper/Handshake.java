@@ -233,6 +233,20 @@ final class Handshake implements Listener {
             return null;
         }
         String clientVersion = "?";
+        try {
+            clientVersion = Protocol.helloVersion(data);
+        } catch (IllegalArgumentException e) {
+            // Checked again below with the whole message
+        }
+        if (protocol >= Protocol.VERSION_CHECK && !clientVersion.equals(serverVersion)) {
+            // The mod and the plugin are one release: the client learns the server's version from WELCOME
+            // and offers the player to install it; this text is only for a client that cannot
+            plugin.getSLF4JLogger().info("{} has DUM-SDK {}, the server {}, disconnecting: the versions must match", name, clientVersion, serverVersion);
+            connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Welcome(Protocol.VERSION, serverVersion)));
+            connection.disconnect(plugin.messages().get("handshake.version-mismatch", Placeholder.unparsed("client", clientVersion),
+                    Placeholder.unparsed("server", serverVersion)).append(InstallErrors.code(plugin.messages(), ErrorCode.VERSION_MISMATCH)));
+            return null;
+        }
         Message.Hello hello = null;
         try {
             hello = (Message.Hello) Protocol.decode(data);

@@ -88,6 +88,37 @@ class SdkUpdaterTest {
         assertFalse(Files.exists(root.resolve("update")));
     }
 
+    @Test void theServersVersionIsFetchedByItsTagEvenWhenOlder() throws Exception {
+        var urls = new ArrayList<String>();
+        byte[] older = ("{\"tag_name\":\"v0.14.1-beta\",\"assets\":["
+                + "{\"name\":\"DUM-SDK-Fabric-0.14.1-beta.jar\",\"browser_download_url\":\"jar\"},"
+                + "{\"name\":\"DUM-SDK-Fabric-0.14.1-beta.jar.sig\",\"browser_download_url\":\"sig\"}]}").getBytes(StandardCharsets.UTF_8);
+        var updater = updater((url, limit) -> { urls.add(url); return url.startsWith("release/tags/") ? older : new byte[64]; },
+                millis -> fail("A bad signature must not be retried"));
+        var done = new CompletableFuture<UpdateStatus>();
+        assertTrue(updater.installInBackground("0.14.1-beta", s -> { if (s.stage() == FAILED) done.complete(s); }));
+        // A test signature: the download got as far as checking it, so the older release was not skipped
+        assertEquals("UPDATE_SIGNATURE", done.get(5, TimeUnit.SECONDS).errorCode());
+        assertEquals(List.of("release/tags/v0.14.1-beta", "jar", "sig"), urls);
+    }
+
+    @Test void aMissingOrDifferentReleaseOfTheServersVersionIsNotInstalled() throws Exception {
+        var missing = updater((url, limit) -> { throw new SdkUpdater.Failure("UPDATE_HTTP_404", "404", false, null); },
+                millis -> fail("A missing release must not be retried"));
+        var done = new CompletableFuture<UpdateStatus>();
+        assertTrue(missing.installInBackground("0.99.0", s -> { if (s.stage() == FAILED) done.complete(s); }));
+        UpdateStatus result = done.get(5, TimeUnit.SECONDS);
+        assertEquals("UPDATE_NOT_FOUND", result.errorCode());
+        assertTrue(result.message().contains("0.99.0"));
+
+        var other = updater((url, limit) -> "{\"tag_name\":\"v0.15.0\",\"assets\":[]}".getBytes(StandardCharsets.UTF_8),
+                millis -> fail("Bad metadata must not be retried"));
+        var wrong = new CompletableFuture<UpdateStatus>();
+        assertTrue(other.installInBackground("0.14.3", s -> { if (s.stage() == FAILED) wrong.complete(s); }));
+        assertEquals("UPDATE_RELEASE", wrong.get(5, TimeUnit.SECONDS).errorCode());
+        assertFalse(other.installInBackground("../outside", s -> fail("An unsafe version starts nothing")));
+    }
+
     @Test void malformedReleaseAndUnsafeVersionAreNotNetworkErrors() throws Exception {
         for (String release : List.of("not json", "{\"tag_name\":\"../../outside\",\"assets\":[]}")) {
             UpdateStatus result = run(updater((url, limit) -> release.getBytes(StandardCharsets.UTF_8),

@@ -1,5 +1,6 @@
 package ru.dum.sdk.fabric.mixin;
 
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.layouts.LinearLayout;
 import net.minecraft.client.gui.screens.ConfirmLinkScreen;
@@ -16,12 +17,14 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import ru.dum.sdk.fabric.update.SdkUpdater;
 import ru.dum.sdk.fabric.DumSdkClient;
+import ru.dum.sdk.fabric.VersionScreen;
 
 /** Add a download action only when the disconnect reason points to the SDK releases. */
 @Mixin(DisconnectedScreen.class)
 abstract class DisconnectedScreenMixin {
     @Shadow @Final private LinearLayout layout;
     @Shadow @Final private DisconnectionDetails details;
+    @Shadow @Final private Screen parent;
     @Unique private boolean dumsdk$recorded;
 
     @Inject(method = "init", at = @At("HEAD"))
@@ -29,6 +32,9 @@ abstract class DisconnectedScreenMixin {
         if (!dumsdk$recorded) {
             dumsdk$recorded = true;
             DumSdkClient.recordDisconnect(details.reason());
+            // Refused for another SDK version: ask the player whether to install the server's one instead
+            String required = DumSdkClient.takeRequiredVersion();
+            if (required != null) Minecraft.getInstance().execute(() -> Minecraft.getInstance().gui.setScreen(new VersionScreen(parent, required)));
         }
     }
 

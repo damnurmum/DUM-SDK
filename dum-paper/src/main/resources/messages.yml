@@ -23,6 +23,8 @@ handshake:
   outdated-client: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> устарел.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>.<newline><newline><gray>Перезапусти игру: мод обновится сам.<newline>Если не помогло, скачай новый: <white>github.com/damnurmum/DUM-SDK/releases"
   # The client's protocol is newer than the server's
   outdated-server: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Мод <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> новее, чем на сервере.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>. Сервер скоро обновится, напиши DUM."
+  # The client's DUM-SDK version differs from the server's (SDK clients since protocol 7 show their own window instead)
+  version-mismatch: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Версия <gradient:#ffb347:#ffcc33>DUM-SDK</gradient> не совпадает с сервером.<newline><gray>У тебя <white><client></white>, на сервере <white><server></white>.<newline><newline><gray>Установи версию сервера: <white>github.com/damnurmum/DUM-SDK/releases"
   # The client could not install modules. <reason> is selected by its stable error code.
   install-failed: "<gradient:#ffb347:#ffcc33><bold>DUM</bold></gradient><newline><newline><white>Не удалось установить модули <gradient:#ffb347:#ffcc33>DUM-SDK</gradient>.<newline><gray><reason>"
   error-module: "<newline><gray>Модуль: <white><module>"
@@ -61,3 +63,4 @@ install-errors:
   hello-timeout: "Клиент не выполнил рукопожатие DUM-SDK вовремя."
   install-timeout: "Клиент не завершил установку модулей вовремя."
   module-runtime: "Модуль перестал работать. Зайди на сервер снова."
+  version-mismatch: "Версия мода DUM-SDK не совпадает с версией сервера."

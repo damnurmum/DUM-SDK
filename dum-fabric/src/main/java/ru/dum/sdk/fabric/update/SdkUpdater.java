@@ -35,14 +35,17 @@ import static ru.dum.sdk.fabric.update.UpdateStatus.Stage.*;
 import java.util.zip.ZipFile;
 
 /**
- * Updates DUM-SDK itself from GitHub Releases with bounded background retries; a newer version
- * whose DUM-SDK-Fabric-X.Y.Z.jar is signed with the release key ({@link Signing}) is downloaded and replaces this jar after the
- * game exits ({@link ColdApply}). Off in development, unless -Ddumsdk.updateTest=true.
+ * Updates DUM-SDK itself from GitHub Releases with bounded background retries, only when the player asks: to the
+ * version of the server they want to join ({@link #installInBackground}), or to the latest release from the DUM-SDK
+ * menu. The release's DUM-SDK-Fabric-X.Y.Z[-stage].jar, signed with the release key ({@link Signing}), is downloaded
+ * and replaces this jar after the game exits ({@link ColdApply}). Off in development, unless -Ddumsdk.updateTest=true.
  */
 public final class SdkUpdater {
 
     private static final Logger LOG = LoggerFactory.getLogger("DUM-SDK");
     private static final String RELEASES = "https://api.github.com/repos/damnurmum/DUM-SDK/releases/latest";
+    /** One release by tag: this plus "v" and the version. */
+    private static final String TAGS = "https://api.github.com/repos/damnurmum/DUM-SDK/releases/tags/";
     public static final String DOWNLOAD_PAGE = "https://github.com/damnurmum/DUM-SDK/releases";
 
     private final Path root;
@@ -50,7 +53,7 @@ public final class SdkUpdater {
     @FunctionalInterface interface Download { byte[] get(String url, int limit) throws IOException, InterruptedException; }
     @FunctionalInterface interface Install { void plan(Path staged, String version) throws IOException; }
     @FunctionalInterface interface Pause { void sleep(long millis) throws InterruptedException; }
-    private final String releases;
+    private final String releases, tags;
     private final boolean enabled, allowDevKey;
     private final Download download;
     private final Install install;
@@ -60,16 +63,23 @@ public final class SdkUpdater {
     private volatile UpdateStatus status;
 
     public SdkUpdater(Path root, String current) {
-        this(root, current, System.getProperty("dumsdk.updateUrl", RELEASES), httpDownload(), null, Thread::sleep,
+        this(root, current, System.getProperty("dumsdk.updateUrl", RELEASES), System.getProperty("dumsdk.updateTagsUrl", TAGS),
+                httpDownload(), null, Thread::sleep,
                 !FabricLoader.getInstance().isDevelopmentEnvironment() || Boolean.getBoolean("dumsdk.updateTest"),
                 Boolean.getBoolean("dumsdk.updateTest"));
     }
 
     SdkUpdater(Path root, String current, String releases, Download download, @Nullable Install install,
                Pause pause, boolean enabled, boolean allowDevKey) {
+        this(root, current, releases, releases + "/tags/", download, install, pause, enabled, allowDevKey);
+    }
+
+    SdkUpdater(Path root, String current, String releases, String tags, Download download, @Nullable Install install,
+               Pause pause, boolean enabled, boolean allowDevKey) {
         this.root = root;
         this.current = current;
         this.releases = releases;
+        this.tags = tags;
         this.download = download;
         this.install = install == null ? this::plan : install;
         this.pause = pause;
@@ -82,8 +92,20 @@ public final class SdkUpdater {
     public UpdateStatus status() { return status; }
     public boolean canCheck() { return enabled && !running.get() && pending == null; }
 
-    /** The observer runs on the worker; UI callers dispatch to the render thread. */
+    /** The latest release, when it is newer. The observer runs on the worker; UI callers dispatch to the render thread. */
     public boolean checkInBackground(Consumer<UpdateStatus> observer) {
+        return start(null, observer);
+    }
+
+    /**
+     * Exactly this version, older or newer than this one: the server's, once the player agreed. Its release is
+     * found by tag v + version. False when the updater is off, busy or an update is already staged.
+     */
+    public boolean installInBackground(String version, Consumer<UpdateStatus> observer) {
+        return safeVersion(version) && start(version, observer);
+    }
+
+    private boolean start(@Nullable String wanted, Consumer<UpdateStatus> observer) {
         if (!enabled || pending != null || !running.compareAndSet(false, true)) return false;
         Thread.ofVirtual().name("DUM-SDK update").start(() -> {
             try {
@@ -91,7 +113,7 @@ public final class SdkUpdater {
                 for (int attempt = 1; attempt <= UpdateStatus.MAX_ATTEMPTS; attempt++) {
                     publish(new UpdateStatus(CHECKING, attempt, "", "", ""), observer);
                     try {
-                        String version = check(attempt, observer);
+                        String version = check(wanted, attempt, observer);
                         publish(new UpdateStatus(version == null ? CURRENT : READY, attempt,
                                 version == null ? current : version, "", ""), observer);
                         return;
@@ -118,16 +140,25 @@ public final class SdkUpdater {
         try { observer.accept(next); } catch (RuntimeException e) { LOG.warn("Cannot display update status", e); }
     }
 
-    private @Nullable String check(int attempt, Consumer<UpdateStatus> observer) throws IOException, InterruptedException {
+    private @Nullable String check(@Nullable String wanted, int attempt, Consumer<UpdateStatus> observer) throws IOException, InterruptedException {
         String version, jarUrl = null, signatureUrl = null;
-        byte[] metadata = download.get(releases, 1024 * 1024);
+        byte[] metadata;
+        try {
+            metadata = download.get(wanted == null ? releases : tags + "v" + wanted, 1024 * 1024);
+        } catch (Failure e) {
+            if (wanted != null && e.code.equals("UPDATE_HTTP_404")) {
+                throw new Failure("UPDATE_NOT_FOUND", "Версии " + wanted + " нет среди релизов на GitHub.", false, e);
+            }
+            throw e;
+        }
         try {
             JsonObject release = JsonParser.parseString(new String(metadata, StandardCharsets.UTF_8)).getAsJsonObject();
             version = release.get("tag_name").getAsString().replaceFirst("^v", "");
             Version.parse(version);
             // The version enters a filename and a helper plan: accept only a safe filename token.
-            if (!version.matches("[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")) throw new IllegalArgumentException("Invalid version");
-            if (!newer(version, current)) return null;
+            if (!safeVersion(version)) throw new IllegalArgumentException("Invalid version");
+            if (wanted != null && !wanted.equals(version)) throw new IllegalArgumentException("Release " + version + " instead of " + wanted);
+            if (wanted == null ? !newer(version, current) : version.equals(current)) return null;
             for (JsonElement asset : release.getAsJsonArray("assets")) {
                 String name = asset.getAsJsonObject().get("name").getAsString();
                 String url = asset.getAsJsonObject().get("browser_download_url").getAsString();
@@ -163,7 +194,14 @@ public final class SdkUpdater {
         return version;
     }
 
-    /** The client's file in a release, in update/ and in mods/: DUM-SDK-Fabric-X.Y.Z.jar, its signature that plus .sig. */
+    private static boolean safeVersion(String version) {
+        return version != null && version.matches("[A-Za-z0-9][A-Za-z0-9._+-]{0,127}");
+    }
+
+    /**
+     * The client's file in a release, in update/ and in mods/, its signature that plus .sig: DUM-SDK-Fabric-X.Y.Z.jar,
+     * with the stage of a pre-release in its version, as in DUM-SDK-Fabric-0.16.0-alpha.jar.
+     */
     static String jarName(String version) {
         return "DUM-SDK-Fabric-" + version + ".jar";
     }

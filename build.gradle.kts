@@ -54,8 +54,9 @@ tasks.register("prepareRelease") {
     val keyPath = providers.gradleProperty("dumSigningKey").orElse("${System.getProperty("user.home")}/.dum/signing.key")
     val output = layout.buildDirectory.dir("release")
     doLast {
-        if (!Regex("""(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)""").matches(releaseVersion)) {
-            throw GradleException("Release version must be a stable X.Y.Z version")
+        // X.Y.Z for a release, X.Y.Z-alpha or X.Y.Z-beta (optionally .N) before it: the stage is part of the version, tag and files
+        if (!Regex("""(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-(alpha|beta)(\.[1-9]\d*)?)?""").matches(releaseVersion)) {
+            throw GradleException("Release version must be X.Y.Z, X.Y.Z-alpha[.N] or X.Y.Z-beta[.N]")
         }
         val notes = file(".github/release-notes/$releaseVersion.md")
         if (!notes.isFile || notes.readText().isBlank()) throw GradleException("Missing release notes: $notes")

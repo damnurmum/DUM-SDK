@@ -18,8 +18,14 @@ public final class Protocol {
 
     public static final String CHANNEL = "dum:sdk";
 
-    /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
+    /**
+     * Bumped on every incompatible change. HELLO must always start with it and the client's SDK version, and WELCOME
+     * with the server's protocol and version, so any server and client can read them and tell the versions apart.
+     */
     public static final int VERSION = 7;
+
+    /** The first protocol whose clients must have exactly the server's SDK version and can offer to install it. */
+    public static final int VERSION_CHECK = 7;
 
     public static final int MAX_MODULE_COUNT = 1024;
     public static final int MAX_ERROR_DETAIL = 1024;
@@ -133,6 +139,17 @@ public final class Protocol {
             throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Missing HELLO prefix");
         }
         return java.nio.ByteBuffer.wrap(data, 1, 4).getInt();
+    }
+
+    /** The client's SDK version from the stable HELLO prefix, whatever its protocol puts after it. */
+    public static String helloVersion(byte[] data) {
+        helloProtocol(data);
+        try {
+            DataInputStream in = new DataInputStream(new ByteArrayInputStream(data, 5, data.length - 5));
+            return in.readUTF();
+        } catch (IOException e) {
+            throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Missing SDK version in HELLO");
+        }
     }
 
     /** @throws IllegalArgumentException if the bytes are not exactly one valid message */

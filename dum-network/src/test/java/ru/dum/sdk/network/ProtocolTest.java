@@ -120,6 +120,9 @@ class ProtocolTest {
         byte[] data = Protocol.encode(new Message.Hello(0x01020304, "x", java.util.List.of()));
         assertArrayEquals(new byte[]{0, 1, 2, 3, 4}, java.util.Arrays.copyOf(data, 5));
         assertEquals(0x01020304, Protocol.helloProtocol(java.util.Arrays.copyOf(data, 5)));
+        // The version follows the protocol in every HELLO, so a server reads it from any client
+        assertEquals("0.16.0-alpha", Protocol.helloVersion(Protocol.encode(new Message.Hello(99, "0.16.0-alpha", java.util.List.of("mod 1.0")))));
+        assertThrows(ProtocolException.class, () -> Protocol.helloVersion(java.util.Arrays.copyOf(data, 5)));
         assertThrows(ProtocolException.class, () -> Protocol.helloProtocol(new byte[]{42, 1, 2, 3, 4}));
         assertThrows(ProtocolException.class, () -> Protocol.helloProtocol(new byte[4]));
     }

@@ -22,7 +22,8 @@ public enum ErrorCode {
     UNSUPPORTED_PROTOCOL(15),
     HELLO_TIMEOUT(16),
     INSTALL_TIMEOUT(17),
-    MODULE_RUNTIME(18);
+    MODULE_RUNTIME(18),
+    VERSION_MISMATCH(19);
 
     private final int wireId;
 

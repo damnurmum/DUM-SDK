@@ -65,6 +65,14 @@ public final class SdkGameTest implements FabricClientGameTest {
             ColdSessionGameTest.run(context);
             return;
         }
+        if (System.getProperty("dumsdk.versionTest") != null) {
+            try {
+                VersionGameTest.run(context);
+            } catch (Exception e) {
+                throw new AssertionError(e);
+            }
+            return;
+        }
         if (System.getProperty("dumsdk.hotSwapScenarios") != null) {
             HotSwapGameTest.scenarios(context, System.getProperty("dumsdk.hotSwap"));
             context.setScreen(TitleScreen::new);

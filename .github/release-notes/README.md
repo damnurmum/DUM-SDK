@@ -4,7 +4,7 @@ Keep the published description of version X.Y.Z in `.github/release-notes/X.Y.Z.
 
 Collect new changes in `UNRELEASED.md`. Only when the author requests a release:
 
-1. Choose the version and update `version` in `gradle.properties`.
+1. Choose the version and update `version` in `gradle.properties`: `X.Y.Z-alpha` or `X.Y.Z-beta` (optionally `.N`, as in `X.Y.Z-beta.2`) before the release, `X.Y.Z` for the release itself. The stage goes into the tag, the file names and the title (`DUM-SDK X.Y.Z Alpha`, `Beta 2`, `Release`). The notes file and the tag use the whole version, as in `0.16.0-alpha.md` and `v0.16.0-alpha`.
 2. Move the accumulated notes into `X.Y.Z.md`, give them the release title and describe changes, upgrade steps and validation. Start a fresh `UNRELEASED.md` for later work.
 3. Commit and push the release changes to `main`.
 4. Run the **Release** workflow on `main`, or push tag `vX.Y.Z` pointing to that exact commit.

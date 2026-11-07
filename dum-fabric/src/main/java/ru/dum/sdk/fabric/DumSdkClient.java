@@ -59,6 +59,11 @@ public final class DumSdkClient implements ClientModInitializer {
 
     /** Version of the server that accepted our HELLO; null when not connected to a DUM-SDK server. */
     private static volatile @Nullable String serverVersion;
+    /**
+     * The version of the server that refused this client for having another one, from its WELCOME: the disconnect
+     * screen becomes {@link VersionScreen}. Null when the last connection had no such refusal.
+     */
+    private static volatile @Nullable String requiredVersion;
 
     private static final Path ROOT = FabricLoader.getInstance().getGameDir().resolve("dum-sdk");
     private static final ConnectionSession SESSION = new ConnectionSession();
@@ -104,7 +109,6 @@ public final class DumSdkClient implements ClientModInitializer {
             if (SESSION.owns(listener.getPacketContext())) disconnected(client);
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(DumSdkClient::disconnected);
-        ClientLifecycleEvents.CLIENT_STARTED.register(client -> checkUpdates());
 
         ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
             if (screen instanceof PauseScreen pause && pause.showsPauseMenu()) {
@@ -172,6 +176,7 @@ public final class DumSdkClient implements ClientModInitializer {
 
     private static void connecting(ClientConfigurationPacketListenerImpl listener, Minecraft client) {
         serverVersion = null;
+        requiredVersion = null;
         long generation = SESSION.begin(listener.getPacketContext());
         client.execute(() -> {
             MODULES.stop();
@@ -282,6 +287,13 @@ public final class DumSdkClient implements ClientModInitializer {
         return lines;
     }
 
+    /** Read once by the disconnect screen: the server's version, if it refused this client for another one. */
+    public static @Nullable String takeRequiredVersion() {
+        String version = requiredVersion;
+        requiredVersion = null;
+        return version;
+    }
+
     public static DiagnosticLog diagnosticLog() { return DIAGNOSTICS; }
     public static SdkUpdater updater() { return UPDATER; }
     public static ReleaseCatalog releases() { return RELEASES; }
@@ -362,6 +374,12 @@ public final class DumSdkClient implements ClientModInitializer {
         }
         switch (message) {
             case Message.Welcome welcome -> {
+                if (configuration && !welcome.serverVersion().equals(VERSION)) {
+                    // The server refuses another version and disconnects right after; the screen offers its version
+                    LOG.info("The server has DUM-SDK {}, this client {}", welcome.serverVersion(), VERSION);
+                    requiredVersion = TransferValidation.cleanLine(welcome.serverVersion(), 128);
+                    return;
+                }
                 if (!configuration || !SESSION.welcome(owner, welcome.protocol() == Protocol.VERSION)) {
                     owner.get(PacketContext.CONNECTION).disconnect(Component.literal("Некорректное рукопожатие DUM-SDK"));
                     return;

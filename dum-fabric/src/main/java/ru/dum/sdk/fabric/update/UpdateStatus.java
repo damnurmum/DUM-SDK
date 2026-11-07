@@ -14,7 +14,7 @@ public record UpdateStatus(Stage stage, int attempt, String version, String erro
 
     public String title() {
         return switch (stage) {
-            case DISABLED -> "Автообновление отключено в dev-клиенте";
+            case DISABLED -> "Обновление недоступно в dev-клиенте";
             case IDLE -> "Обновления ещё не проверялись";
             case CHECKING -> attempt > 1 ? "Повторная попытка " + attempt + "/" + MAX_ATTEMPTS : "Проверка обновлений DUM-SDK";
             case DOWNLOADING -> "Загрузка DUM-SDK " + version;
@@ -28,7 +28,7 @@ public record UpdateStatus(Stage stage, int attempt, String version, String erro
 
     public String message() {
         return switch (stage) {
-            case CHECKING -> "Ищем новую версию на GitHub";
+            case CHECKING -> "Ищем версию на GitHub";
             case DOWNLOADING -> "Обновление началось. Игру можно продолжать";
             case VERIFYING -> "Проверяем файл перед установкой";
             case RETRY_WAIT -> detail + " Повторная попытка " + (attempt + 1) + "/" + MAX_ATTEMPTS
@@ -36,7 +36,7 @@ public record UpdateStatus(Stage stage, int attempt, String version, String erro
             case READY -> "Установится после перезапуска игры";
             case FAILED -> detail + " Скачай SDK вручную с GitHub. Код: " + errorCode;
             case CURRENT -> "Обновление не требуется";
-            case DISABLED -> "Игровая версия проверяет обновления автоматически";
+            case DISABLED -> "В игровой версии обновление ставится по кнопке";
             default -> "Проверить обновления можно здесь";
         };
     }
