@@ -21,6 +21,8 @@ Historical checks used local SDK build labels from 0.14.x through 0.17.0 before 
 - [x] Rate limit with a real flood: a changed client spamming a module gets disconnected with "прислал серверу слишком много сообщений". Confirmed by the author on 2026-10-30.
 - [x] Required modules (0.13.0): a required module failing in game disconnects the player with the reason. Checked 2026-10-27 with the game test and sdktest built as required; an optional one (sdktest as shipped) only turns itself off.
 
+- [x] Released client 0.15.2 on the Windows PC joins a Paper server on the local network (the macOS laptop's test server, DUM-SDK Paper 0.15.0, protocol 6, address 192.168.0.10). Release-signed `ui`, `info` and `wings` download and run: elytra over a chestplate, the compass and clock, the death flag, the profile and the skills menu all work, and the author saw no errors or glitches. The server log has no errors. Rejoin after several selective `/dumsdk reload ui` publications works. Confirmed by the author on 2026-11-06. The Windows instance's other mods were not recorded.
+
 ## macOS laptop
 
 - [x] `./gradlew :dum-fabric:runClient -Pjoin=localhost` joined the local Paper server on 2026-10-30. The client connected to DUM-SDK 0.14.2 and started `info` 0.4.1 and `sdktest` 0.3.0.
@@ -120,7 +122,7 @@ Earlier macOS checks used a dev client against a fake release. On 2026-10-31, th
 
 ## Local Paper (module publication)
 
-- [x] On local Paper 0.15.0 before persistent publication was added, `/dumsdk reload` disconnected the player with the update message; the author rejoined and `info` worked. Confirmed by the author on 2026-10-30. Rejoin after the persistent publication change has not been checked in the client.
+- [x] On local Paper 0.15.0 before persistent publication was added, `/dumsdk reload` disconnected the player with the update message; the author rejoined and `info` worked. Confirmed by the author on 2026-10-30. Rejoin after the persistent publication change was checked on 2026-11-06 with the released 0.15.2 client on Windows (see Windows PC).
 - [x] On local Paper 0.15.0, the published catalog survived a server restart while `sdktest.jar` was absent from the staging folder. `/dumsdk` still listed `info` and `sdktest`; after `/dumsdk reload`, it listed only `info`. Restoring the staged jar and running the command again restored both modules. Checked on 2026-10-30.
 - [x] On local Paper 0.15.0, a staged jar without a signature made `/dumsdk reload` fail; `/dumsdk` still listed the previous two modules. Checked on 2026-10-30.
 
