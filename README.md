@@ -1,10 +1,7 @@
 <div align="center">
 
-<img src="docs/images/icon.png" alt="DUM-SDK" width="112">
+<img src="docs/images/social-preview.png" alt="DUM-SDK: signed client modules for a Minecraft server">
 
-# DUM-SDK
-
-**Signed client modules for a Minecraft server.**<br>
 A Fabric client mod and a Paper plugin: the server hands its players client-side modules when they join, and swaps them in game when it publishes new ones.
 
 <a href="https://github.com/damnurmum/DUM-SDK/releases"><img alt="Release" src="https://img.shields.io/github/v/release/damnurmum/DUM-SDK?include_prereleases&sort=semver&style=flat-square&label=release&color=2f343a&labelColor=2f343a"></a>
