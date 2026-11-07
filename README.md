@@ -1,8 +1,51 @@
+<div align="center">
+
 # DUM-SDK
 
-A Fabric client mod and a Paper server plugin that let a server deliver signed client-side modules to its players at join time, without rebuilding the mod.
+**Signed client modules for a Minecraft server.**<br>
+A Fabric client mod and a Paper plugin: the server hands its players client-side modules when they join, and swaps them in game when it publishes new ones.
 
-Work in progress. Done so far:
+<a href="https://github.com/damnurmum/DUM-SDK/releases"><img alt="Release" src="https://img.shields.io/github/v/release/damnurmum/DUM-SDK?include_prereleases&sort=semver&style=flat-square&label=release&color=2f343a&labelColor=2f343a"></a>
+<img alt="Minecraft 26.2" src="https://img.shields.io/badge/Minecraft-26.2-2f343a?style=flat-square&labelColor=2f343a">
+<img alt="Fabric Loader 0.19.5" src="https://img.shields.io/badge/Fabric_Loader-0.19.5-2f343a?style=flat-square&labelColor=2f343a">
+<img alt="Paper 26.2" src="https://img.shields.io/badge/Paper-26.2-2f343a?style=flat-square&labelColor=2f343a">
+<img alt="Java 25" src="https://img.shields.io/badge/Java-25-2f343a?style=flat-square&labelColor=2f343a">
+<img alt="protocol 7" src="https://img.shields.io/badge/protocol-7-2f343a?style=flat-square&labelColor=2f343a">
+<a href="LICENSE"><img alt="License MIT" src="https://img.shields.io/badge/license-MIT-2f343a?style=flat-square&labelColor=2f343a"></a>
+
+</div>
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/menu-modifications.png" alt="The DUM-SDK menu: modules of the server"></td>
+    <td width="50%"><img src="docs/images/menu-updates.png" alt="The DUM-SDK menu: releases"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Modules of the server in the DUM-SDK menu</sub></td>
+    <td align="center"><sub>Releases and their notes, from GitHub</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/version-window.png" alt="The window offering the server's version"></td>
+    <td width="50%" valign="top">
+
+**In short**
+
+- Modules come from the server, signed and checked, and run in their own class loaders while the player is there.
+- `/dumsdk reload` publishes new modules; players in game get them without reconnecting.
+- The mod and the plugin are one release: a player with another version is offered the server's one, and nothing is downloaded without their consent.
+- The server decides the rules; a module only shows and asks. See [fair play](docs/modules.md#fair-play-the-rules-every-module-follows).
+
+**Docs:** [writing modules](docs/modules.md) · [protocol](docs/protocol.md) · [SDK menu](docs/diagnostics.md)
+
+</td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Another version on the server: install it or cancel</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+## Features
 
 - HELLO / WELCOME handshake on the `dum:sdk` channel during the configuration phase. Players without the mod are disconnected before they enter the world.
 - Modules may carry `assets/` (textures, models, sounds, lang): while a module runs, its jar is a client resource pack on top of the others, loaded before the player enters the world.
@@ -14,7 +57,7 @@ Work in progress. Done so far:
 - Session-scoped appearance hooks let hot modules select armor/wings rendering and define models and names for tagged vanilla items. Their effects require a successful SDK handshake, module installation and play join; they stop on disconnect and stay off on ordinary servers. This does not hot-load arbitrary mixins or add native registry types.
 - Client modules come from the server: signed jars in `plugins/DUM-SDK/modules` are sent to the client in the configuration phase, checked (SHA-256 and Ed25519 signature), cached in `.minecraft/dum-sdk/cache` and never taken back to an older version. They are loaded, each in its own class loader, while on the server and unloaded on leaving. A failing module is turned off without taking the game down; after a crash with modules running, the next launch is in safe mode. A server with modules does not let a client in safe mode join (playing without them would be playing by other rules): the player is told to restart the game.
 
-SDK 0.16.0-alpha uses protocol 7, which swaps modules in game after a publication and carries the client's mod list in HELLO. SDK 0.15.x uses protocol 6, SDK 0.14.2 protocol 5 and SDK 0.14.1 protocol 4. Update both client and Paper together. Admission checks the protocol number, not equality of SDK release versions or the latest GitHub release. See [protocol details](docs/protocol.md).
+SDK 0.16.0-alpha uses protocol 7, which swaps modules in game after a publication and carries the client's mod list in HELLO. SDK 0.15.x uses protocol 6, SDK 0.14.2 protocol 5 and SDK 0.14.1 protocol 4. Update both client and Paper together: since 0.16.0-alpha a server admits only a client of exactly its version, stage included. See [protocol details](docs/protocol.md).
 
 ## Layout
 

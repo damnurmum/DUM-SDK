@@ -65,6 +65,10 @@ public final class SdkGameTest implements FabricClientGameTest {
             ColdSessionGameTest.run(context);
             return;
         }
+        if (Boolean.getBoolean("dumsdk.readmeShots")) {
+            ReadmeShots.run(context);
+            return;
+        }
         if (System.getProperty("dumsdk.versionTest") != null) {
             try {
                 VersionGameTest.run(context);
