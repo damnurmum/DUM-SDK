@@ -101,10 +101,10 @@ jobs:
           set -euo pipefail
           (cd build/release && sha256sum --check SHA256SUMS.txt)
           gh release create "$RELEASE_TAG" \
-            "build/release/DUM-SDK-Fabric-$RELEASE_VERSION.jar#Fabric mod (client)" \
-            "build/release/DUM-SDK-Fabric-$RELEASE_VERSION.jar.sig#Fabric mod signature" \
-            "build/release/DUM-SDK-Paper-$RELEASE_VERSION.jar#Paper plugin (server)" \
-            "build/release/SHA256SUMS.txt#SHA-256 sums" \
+            "build/release/DUM-SDK-Fabric-$RELEASE_VERSION.jar" \
+            "build/release/DUM-SDK-Fabric-$RELEASE_VERSION.jar.sig" \
+            "build/release/DUM-SDK-Paper-$RELEASE_VERSION.jar" \
+            "build/release/SHA256SUMS.txt" \
             --draft --target "$RELEASE_COMMIT" \
             --title "$RELEASE_TITLE" --notes-file "$RELEASE_NOTES"
           gh release edit "$RELEASE_TAG" --draft=false --latest
