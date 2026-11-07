@@ -33,7 +33,7 @@ dependencies {
     minecraft("com.mojang:minecraft:26.2")
     implementation("net.fabricmc:fabric-loader:0.19.5")
     implementation("net.fabricmc.fabric-api:fabric-api:0.161.0+26.2")
-    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-Fabric-0.15.1.jar"))
+    compileOnly(files("../DUM-SDK/dum-fabric/build/libs/DUM-SDK-Fabric-0.16.0-alpha.jar"))
 }
 ```
 
@@ -168,11 +168,11 @@ sdk.onModuleMessage(plugin, "info", (player, data) -> { /* main thread */ });
 sdk.sendToModule(player, "info", bytes); // from PlayerJoinEvent on
 ```
 
-A module can start more than once while the player stays on the server: a publication swaps it in game (unreleased, protocol 7). The new instance starts with no state, so send a module its state on `ru.dum.sdk.paper.api.ClientModulesLoadedEvent` rather than only on `PlayerJoinEvent`. The event fires during `PlayerJoinEvent` with every module the player was given, and again after an update with the modules that started anew (the changed ones and the modules that depend on them). Messages a new module sends from `onEnable` during an update can arrive before the server grants it and are dropped: let the server side speak first on this event.
+A module can start more than once while the player stays on the server: a publication swaps it in game (SDK 0.16.0-alpha, protocol 7). The new instance starts with no state, so send a module its state on `ru.dum.sdk.paper.api.ClientModulesLoadedEvent` rather than only on `PlayerJoinEvent`. The event fires during `PlayerJoinEvent` with every module the player was given, and again after an update with the modules that started anew (the changed ones and the modules that depend on them). Messages a new module sends from `onEnable` during an update can arrive before the server grants it and are dropped: let the server side speak first on this event.
 
 The module's data format is its own business; follow the [fair play rules](#fair-play-the-rules-every-module-follows): the server decides and checks, and sends only what the player may know (the `info` accessories send only "slot N was clicked", and the server decides what happens).
 
-Since SDK 0.15.0, listen for `ru.dum.sdk.paper.api.ClientModuleFailureEvent` to observe a managed runtime failure. The event exposes `module()`, `where()` and `detail()` plus the player, and (unreleased) `clientMods()`: the client's own Fabric mods as "id version" from its HELLO. Paper logs that list on every join and with each failure. It runs after all SDK grants are revoked and before the reconnect kick; `sdk.hasModule` is already false. It cannot cancel the kick. Treat diagnostics as untrusted bounded client reports and use them for logging/cleanup, not gameplay rewards or validation. Missing `runtime.failed` text in old `messages.yml` files falls back to the bundled Russian message.
+Since SDK 0.15.0, listen for `ru.dum.sdk.paper.api.ClientModuleFailureEvent` to observe a managed runtime failure. The event exposes `module()`, `where()` and `detail()` plus the player, and (SDK 0.16.0-alpha) `clientMods()`: the client's own Fabric mods as "id version" from its HELLO. Paper logs that list on every join and with each failure. It runs after all SDK grants are revoked and before the reconnect kick; `sdk.hasModule` is already false. It cannot cancel the kick. Treat diagnostics as untrusted bounded client reports and use them for logging/cleanup, not gameplay rewards or validation. Missing `runtime.failed` text in old `messages.yml` files falls back to the bundled Russian message.
 
 Reloading DUM-SDK without a server restart (plugman) creates a new plugin instance with new classes. Online players keep their module access, restored from the published catalog, but a plugin that serves a module still holds the previous instance: reload it together with DUM-SDK. Until then, its `sendToModule` sends nothing and its handlers receive nothing.
 
@@ -187,7 +187,7 @@ The server itself should not leak either: Paper's anti-xray hides ores the playe
 
 1. In `~/.gradle/gradle.properties`: `dumModulesDir=<server>/plugins/DUM-SDK/modules`, and `dumSigningKey=<file>` if the key is not `~/.dum/signing.key`.
 2. In the module's own build, run its signing/deployment task. The external example projects provide `./gradlew :<project>:deploy`, which signs the jar and copies it with its `.sig` there.
-3. `/dumsdk reload` on the server publishes the staged jars. Players in game get an update (unreleased, protocol 7): their client downloads the changed modules, turns off the old ones with the modules that depend on them, starts the new ones and reloads module resources, without reconnecting. Unchanged modules keep running and keep talking to their server sides meanwhile. A changed whole Fabric mod still disconnects the player with a request to restart the game. A failed or timed-out update (`handshake.install-timeout-seconds`) disconnects with the usual installation error. A screen of a swapped module is closed. Until publication, even a Paper restart keeps using the last published catalog. On the first startup after upgrading, the existing `modules` folder becomes the initial published catalog. If a staged jar is invalid, publication fails and the old catalog stays active.
+3. `/dumsdk reload` on the server publishes the staged jars. Players in game get an update (SDK 0.16.0-alpha, protocol 7): their client downloads the changed modules, turns off the old ones with the modules that depend on them, starts the new ones and reloads module resources, without reconnecting. Unchanged modules keep running and keep talking to their server sides meanwhile. A changed whole Fabric mod still disconnects the player with a request to restart the game. A failed or timed-out update (`handshake.install-timeout-seconds`) disconnects with the usual installation error. A screen of a swapped module is closed. Until publication, even a Paper restart keeps using the last published catalog. On the first startup after upgrading, the existing `modules` folder becomes the initial published catalog. If a staged jar is invalid, publication fails and the old catalog stays active.
 
 Selective publication (SDK 0.15.0): `/dumsdk reload <id> [id ...]` takes only the selected IDs from staging and preserves every other published jar byte for byte. IDs come from `dum-module.json` or `fabric.mod.json`, not jar filenames. For example, `/dumsdk reload info wings` publishes those two entries together, leaving any unrelated staged updates unpublished. Tab completion suggests IDs in the current published catalog; a new staged ID can also be entered directly.
 
@@ -195,7 +195,7 @@ All selected jars must exist with valid signatures and unique IDs. If any select
 
 If a module gets a lower version than the one published before, publication still succeeds but warns the administrator: clients that already installed the newer version refuse the older one with `VERSION_ROLLBACK` and cannot join. Publish the fix with a higher version instead.
 
-A jar signed with the dev key is left out of the catalog with a warning unless `allow-dev-signed: true` is set in DUM-SDK's config (unreleased): players' clients refuse dev-signed jars, and one would keep every player out. The rest is published and players join without it, also after a restart with an old snapshot. Set the option only on a development server used with development clients.
+A jar signed with the dev key is left out of the catalog with a warning unless `allow-dev-signed: true` is set in DUM-SDK's config (SDK 0.16.0-alpha): players' clients refuse dev-signed jars, and one would keep every player out. The rest is published and players join without it, also after a restart with an old snapshot. Set the option only on a development server used with development clients.
 
 If Paper cannot load the published catalog at startup (a broken jar, a missing snapshot or a signing key change), DUM-SDK stays enabled and refuses every join with the `core.unavailable` text, so nobody plays without the client mod. Fix the staged jars and run `/dumsdk reload`.
 
