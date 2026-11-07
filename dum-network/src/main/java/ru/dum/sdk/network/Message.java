@@ -5,8 +5,12 @@ import java.util.List;
 /** A message on the {@value Protocol#CHANNEL} channel. Encoded and decoded by {@link Protocol}. */
 public sealed interface Message {
 
-    /** Client to server, sent as soon as the configuration phase starts. */
-    record Hello(int protocol, String sdkVersion) implements Message {
+    /**
+     * Client to server, sent as soon as the configuration phase starts.
+     *
+     * @param mods the client's own Fabric mods as "id version", for the server's log and failure reports
+     */
+    record Hello(int protocol, String sdkVersion, List<String> mods) implements Message {
     }
 
     /** Server to client: the handshake is accepted. A {@link Catalog} follows. */
@@ -15,6 +19,13 @@ public sealed interface Message {
 
     /** Server to client: the modules to run on this server. The client fetches what it lacks, then says {@link Ready}. */
     record Catalog(List<ModuleInfo> modules) implements Message {
+    }
+
+    /**
+     * Server to client in play, after a publication: the player's new catalog. The client fetches what it lacks,
+     * swaps the changed modules without reconnecting and says {@link Ready}, or {@link Restart} if Fabric mods change.
+     */
+    record Update(List<ModuleInfo> modules) implements Message {
     }
 
     /**
@@ -27,7 +38,14 @@ public sealed interface Message {
     record ModuleInfo(String id, String version, byte[] sha256, int size, byte[] signature, boolean fabricMod) {
     }
 
-    /** Client to server: send me the jar with this hash. */
+    /**
+     * Client to server in play, the answer to {@link Update}: the modules are swapped. These modules started anew,
+     * the changed ones and those that depend on them, so their server sides send them their state again.
+     */
+    record Updated(List<String> modules) implements Message {
+    }
+
+    /** Client to server, while installing or updating: send me the jar with this hash. */
     record Request(byte[] sha256) implements Message {
     }
 
@@ -35,7 +53,7 @@ public sealed interface Message {
     record Chunk(byte[] sha256, int offset, byte[] data) implements Message {
     }
 
-    /** Client to server: OK after installation, or a stable error code plus diagnostic context. */
+    /** Client to server: OK after installation or an update, or a stable error code plus diagnostic context. */
     record Ready(ErrorCode code, String module, String detail) implements Message {
         public static Ready success() { return new Ready(ErrorCode.OK, "", ""); }
     }

@@ -75,6 +75,11 @@ loom {
             }
         }
         if (project.hasProperty("plainServer")) vmArg("-Ddumsdk.plainServer=${project.property("plainServer")}")
+        // -PhotSwap=<server>/plugins/DUM-SDK/modules: publish a new sdktest in game and check it is swapped without reconnecting
+        if (project.hasProperty("hotSwap")) vmArg("-Ddumsdk.hotSwap=${project.property("hotSwap")}")
+        // With -PhotSwap, -PhotSwapScenarios runs the update paths around a swap instead; =cold with -PhotSwapCold=<server-scoped Fabric mod jar>
+        if (project.hasProperty("hotSwapScenarios")) vmArg("-Ddumsdk.hotSwapScenarios=${project.property("hotSwapScenarios")}")
+        if (project.hasProperty("hotSwapCold")) vmArg("-Ddumsdk.hotSwapCold=${project.property("hotSwapCold")}")
         if (project.hasProperty("downloadTest")) vmArg("-Ddumsdk.downloadTest=true")
         if (project.hasProperty("standaloneTest")) vmArg("-Ddumsdk.standaloneTest=true")
         if (project.hasProperty("coldTest")) vmArg("-Ddumsdk.coldTest=true")

@@ -47,7 +47,9 @@ public final class ModuleInstaller {
     private final Path versionsFile;
     private final Consumer<Message> send;
     private final ColdMods coldMods;
-    private final BiFunction<List<Path>, List<ColdMods.Mod>, CompletableFuture<?>> installed;
+    private final BiFunction<List<Path>, List<ColdMods.Mod>, CompletableFuture<List<String>>> installed;
+    /** Swapping modules in play after a publication: answers UPDATED instead of READY. */
+    private final boolean update;
     private final BooleanSupplier current;
     /** Dev-signed modules run only in a development client; -Ddumsdk.release=true turns that off for testing. */
     private final boolean allowDevKey = FabricLoader.getInstance().isDevelopmentEnvironment() && !Boolean.getBoolean("dumsdk.release");
@@ -63,16 +65,19 @@ public final class ModuleInstaller {
 
     /**
      * @param send      sends a message to the server
-     * @param installed gets hot jars and verified cold mods once they are all in place; READY waits for it
+     * @param installed gets hot jars and verified cold mods once they are all in place; READY waits for it.
+     *                  In an update it completes with the modules that started anew, for UPDATED
+     * @param update    a catalog update in play rather than the installation of a joining client
      */
-    public ModuleInstaller(Path root, ColdMods coldMods, Consumer<Message> send, BiFunction<List<Path>, List<ColdMods.Mod>, CompletableFuture<?>> installed,
-                           BooleanSupplier current) {
+    public ModuleInstaller(Path root, ColdMods coldMods, Consumer<Message> send, BiFunction<List<Path>, List<ColdMods.Mod>, CompletableFuture<List<String>>> installed,
+                           BooleanSupplier current, boolean update) {
         this.cache = root.resolve("cache");
         this.versionsFile = root.resolve("versions.properties");
         this.coldMods = coldMods;
         this.send = send;
         this.installed = installed;
         this.current = current;
+        this.update = update;
     }
 
     public void catalog(List<Message.ModuleInfo> modules) {
@@ -201,7 +206,7 @@ public final class ModuleInstaller {
             send.accept(new Message.Restart(restart));
             return;
         }
-        CompletableFuture<?> installation;
+        CompletableFuture<List<String>> installation;
         try {
             installation = installed.apply(jars, fabricMods);
         } catch (RuntimeException e) {
@@ -220,15 +225,15 @@ public final class ModuleInstaller {
                 fail(ErrorCode.RESOURCE_RELOAD_FAILED, "", error.toString());
                 return;
             }
-            complete(versions);
+            complete(versions, result);
         });
     }
 
-    private synchronized void complete(Properties versions) {
+    private synchronized void complete(Properties versions, List<String> started) {
         if (!current.getAsBoolean() || state != State.INSTALLING) return;
         saveVersions(versions);
         state = State.COMPLETE;
-        send.accept(Message.Ready.success());
+        send.accept(update ? new Message.Updated(started == null ? List.of() : started) : Message.Ready.success());
     }
 
     private void saveVersions(Properties versions) {

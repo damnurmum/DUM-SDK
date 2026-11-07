@@ -170,8 +170,10 @@ final class Handshake implements Listener {
         try {
             byte[] hello = state.hello.get(helloTimeout, TimeUnit.SECONDS);
             if (!current(connection, epoch)) return;
-            String clientVersion = accept(connection, name, hello);
-            if (clientVersion == null) return;
+            Message.Hello client = accept(connection, name, hello);
+            if (client == null) return;
+            String clientVersion = client.sdkVersion();
+            String mods = client.mods().isEmpty() ? "-" : String.join(", ", client.mods());
             if (!current(connection, epoch)) return;
             UUID id = connection.getProfile().getId();
             List<Message.ModuleInfo> modules = plugin.modulesFor(id);
@@ -182,11 +184,12 @@ final class Handshake implements Listener {
             if (!current(connection, epoch)) return;
             switch (response) {
                 case Message.Ready ready when ready.code() == ErrorCode.OK -> {
-                    plugin.access().grant(id, modules.stream().map(Message.ModuleInfo::id).toList(), epoch);
-                    plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}", name, clientVersion);
+                    plugin.access().grantJars(id, modules, epoch);
+                    plugin.clientMods(id, client.mods());
+                    plugin.getSLF4JLogger().info("{} joined with DUM-SDK {}; mods: {}", name, clientVersion, mods);
                 }
                 case Message.Ready ready -> {
-                    plugin.getSLF4JLogger().info("{} could not install modules [{}] {}: {}", name, ready.code(), ready.module(), ready.detail());
+                    plugin.getSLF4JLogger().info("{} could not install modules [{}] {}: {}; mods: {}", name, ready.code(), ready.module(), ready.detail(), mods);
                     connection.disconnect(InstallErrors.message(plugin.messages(), ready));
                 }
                 case Message.Restart restart -> {
@@ -218,8 +221,8 @@ final class Handshake implements Listener {
         return false;
     }
 
-    /** Sends WELCOME and returns the client's DUM-SDK version, or disconnects and returns null. */
-    private @Nullable String accept(PlayerConfigurationConnection connection, String name, byte[] data) {
+    /** Sends WELCOME and returns the client's HELLO, or disconnects and returns null. */
+    private Message.@Nullable Hello accept(PlayerConfigurationConnection connection, String name, byte[] data) {
         String serverVersion = plugin.getPluginMeta().getVersion();
         int protocol;
         try {
@@ -230,8 +233,10 @@ final class Handshake implements Listener {
             return null;
         }
         String clientVersion = "?";
+        Message.Hello hello = null;
         try {
-            clientVersion = ((Message.Hello) Protocol.decode(data)).sdkVersion();
+            hello = (Message.Hello) Protocol.decode(data);
+            clientVersion = hello.sdkVersion();
         } catch (IllegalArgumentException e) {
             if (protocol == Protocol.VERSION) {
                 plugin.getSLF4JLogger().warn("[MALFORMED_MESSAGE] {} sent a malformed HELLO", name);
@@ -248,7 +253,7 @@ final class Handshake implements Listener {
             return null;
         }
         connection.sendPluginMessage(plugin, Protocol.CHANNEL, Protocol.encode(new Message.Welcome(Protocol.VERSION, serverVersion)));
-        return clientVersion;
+        return hello;
     }
 
     private Component outdated(String key, String client, String server) {

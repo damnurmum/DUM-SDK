@@ -13,9 +13,9 @@ class ProtocolTest {
     @Test
     void roundTrip() {
         for (Message message : new Message[]{
-                new Message.Hello(Protocol.VERSION, "0.1.0"),
+                new Message.Hello(Protocol.VERSION, "0.1.0", java.util.List.of("fabric-api 0.161.0+26.2", "sodium 0.8.0")),
                 new Message.Welcome(Protocol.VERSION, "0.1.0"),
-                new Message.Hello(-1, ""),
+                new Message.Hello(-1, "", java.util.List.of()),
         }) {
             assertEquals(message, Protocol.decode(Protocol.encode(message)));
         }
@@ -41,6 +41,14 @@ class ProtocolTest {
         Message.Catalog catalog = (Message.Catalog) Protocol.decode(Protocol.encode(new Message.Catalog(java.util.List.of(
                 new Message.ModuleInfo("info", "0.2.0", sha, 1234, signature, false),
                 new Message.ModuleInfo("coldtest", "1.0.0", coldSha, 5, signature, true)))));
+        Message.Update update = (Message.Update) Protocol.decode(Protocol.encode(new Message.Update(catalog.modules())));
+        assertEquals(9, Protocol.encode(update)[0]);
+        assertEquals(catalog.modules().size(), update.modules().size());
+        assertArrayEquals(coldSha, update.modules().get(1).sha256());
+        assertEquals(new Message.Updated(java.util.List.of("info", "wings")),
+                Protocol.decode(Protocol.encode(new Message.Updated(java.util.List.of("info", "wings")))));
+        assertEquals(10, Protocol.encode(new Message.Updated(java.util.List.of()))[0]);
+        assertThrows(ProtocolException.class, () -> Protocol.encode(new Message.Updated(java.util.List.of("../info"))));
         Message.ModuleInfo info = catalog.modules().getFirst();
         assertEquals("info", info.id());
         assertEquals("0.2.0", info.version());
@@ -92,9 +100,24 @@ class ProtocolTest {
     }
 
     @Test
+    void helloRejectsMalformedClientMods() {
+        for (var mods : java.util.List.of(java.util.List.of(""), java.util.List.of("mod 1.0\nforged line"),
+                java.util.List.of("x".repeat(Protocol.MAX_CLIENT_MOD + 1)),
+                java.util.Collections.nCopies(Protocol.MAX_CLIENT_MODS + 1, "mod 1.0"))) {
+            assertThrows(ProtocolException.class, () -> Protocol.encode(new Message.Hello(Protocol.VERSION, "0.1.0", mods)));
+        }
+        byte[] valid = Protocol.encode(new Message.Hello(Protocol.VERSION, "0.1.0", java.util.List.of("mod 1.0")));
+        assertThrows(ProtocolException.class, () -> Protocol.decode(java.util.Arrays.copyOf(valid, valid.length - 1)));
+        // A protocol 6 HELLO has no mod list: only its stable prefix can be read
+        byte[] old = java.util.Arrays.copyOf(valid, 1 + 4 + 2 + "0.1.0".length());
+        assertThrows(ProtocolException.class, () -> Protocol.decode(old));
+        assertEquals(Protocol.VERSION, Protocol.helloProtocol(old));
+    }
+
+    @Test
     void helloStartsWithProtocolVersion() {
         // Type byte, then the protocol as a big-endian int: older and newer servers rely on this layout
-        byte[] data = Protocol.encode(new Message.Hello(0x01020304, "x"));
+        byte[] data = Protocol.encode(new Message.Hello(0x01020304, "x", java.util.List.of()));
         assertArrayEquals(new byte[]{0, 1, 2, 3, 4}, java.util.Arrays.copyOf(data, 5));
         assertEquals(0x01020304, Protocol.helloProtocol(java.util.Arrays.copyOf(data, 5)));
         assertThrows(ProtocolException.class, () -> Protocol.helloProtocol(new byte[]{42, 1, 2, 3, 4}));

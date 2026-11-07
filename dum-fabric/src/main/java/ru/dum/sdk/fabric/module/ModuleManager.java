@@ -161,19 +161,7 @@ public final class ModuleManager {
         if (!running.isEmpty()) return CompletableFuture.completedFuture(null);
         List<ModuleManifest> all = new ArrayList<>();
         Map<String, Candidate> found = scan(jars, all);
-        Map<String, Candidate> cold = new LinkedHashMap<>();
-        Set<String> coldIds = mods.stream().map(ColdMods.Mod::id).collect(java.util.stream.Collectors.toSet());
-        for (ColdMods.Mod mod : mods) {
-            Map<String, String> dependencies = new LinkedHashMap<>();
-            FabricLoader.getInstance().getModContainer(mod.id()).orElseThrow().getMetadata().getDependencies().stream()
-                    .filter(d -> d.getKind() == ModDependency.Kind.DEPENDS && coldIds.contains(d.getModId()))
-                    .forEach(d -> dependencies.put(d.getModId(), "*"));
-            ModuleManifest manifest = new ModuleManifest(mod.id(), mod.version(), API_VERSION, ServerModContract.ENTRYPOINT,
-                    dependencies, "cold", true);
-            all.add(manifest);
-            cold.put(mod.id(), new Candidate(manifest, mod.jar()));
-        }
-        found.putAll(cold);
+        found.putAll(cold(mods, all));
         List<Candidate> order = resolve(found);
         if (all.isEmpty()) return CompletableFuture.completedFuture(null);
         // Playing without the server's modules would be playing by other rules: no join until the game restarts
@@ -208,6 +196,87 @@ public final class ModuleManager {
             if (module.loader != null && ModulePacks.hasAssets(module.jar)) assets.put(module.id(), module.jar);
         }
         return packs.set(assets);
+    }
+
+    /** Cooperative cold Fabric mods of the catalog as candidates, their manifests added to {@code all}. */
+    private static Map<String, Candidate> cold(List<ColdMods.Mod> mods, List<ModuleManifest> all) {
+        Map<String, Candidate> cold = new LinkedHashMap<>();
+        Set<String> coldIds = mods.stream().map(ColdMods.Mod::id).collect(java.util.stream.Collectors.toSet());
+        for (ColdMods.Mod mod : mods) {
+            Map<String, String> dependencies = new LinkedHashMap<>();
+            FabricLoader.getInstance().getModContainer(mod.id()).orElseThrow().getMetadata().getDependencies().stream()
+                    .filter(d -> d.getKind() == ModDependency.Kind.DEPENDS && coldIds.contains(d.getModId()))
+                    .forEach(d -> dependencies.put(d.getModId(), "*"));
+            ModuleManifest manifest = new ModuleManifest(mod.id(), mod.version(), API_VERSION, ServerModContract.ENTRYPOINT,
+                    dependencies, "cold", true);
+            all.add(manifest);
+            cold.put(mod.id(), new Candidate(manifest, mod.jar()));
+        }
+        return cold;
+    }
+
+    /**
+     * Swaps in the server's new catalog in play, after a publication, without reconnecting: modules whose jar changed
+     * or that the server dropped turn off with the modules that depend on them, new and changed ones start, the rest
+     * keeps running. Cold Fabric mods are unchanged here: the installer asks for a restart instead. Completes with
+     * the modules that started, once their resources are loaded. Render thread.
+     */
+    public CompletableFuture<List<String>> update(List<Path> jars, List<ColdMods.Mod> mods) {
+        List<ModuleManifest> all = new ArrayList<>();
+        Map<String, Candidate> found = scan(jars, all);
+        found.putAll(cold(mods, all));
+        List<Candidate> order = resolve(found);
+        Set<ClassLoader> before = loaders();
+        for (RunningModule module : List.copyOf(running)) {
+            if (module.loader == null) continue;
+            Candidate next = found.get(module.id());
+            if (next == null || !next.jar.equals(module.jar) || !order.contains(next)) stop(module);
+        }
+        // A screen of a module that is gone would keep its classes and call into a closed context
+        Minecraft minecraft = Minecraft.getInstance();
+        Screen screen = minecraft.gui.screen();
+        if (screen != null && before.contains(screen.getClass().getClassLoader()) && !loaders().contains(screen.getClass().getClassLoader())) {
+            minecraft.gui.setScreen(null);
+        }
+        List<String> started = new ArrayList<>();
+        for (Candidate candidate : order) {
+            ModuleManifest manifest = candidate.manifest;
+            if (!manifest.hot() || isRunning(manifest.id())) continue;
+            if (!manifest.deps().keySet().stream().allMatch(this::isRunning)) {
+                LOG.warn("Module {} is not started: a module it depends on failed", manifest.id());
+                continue;
+            }
+            String problem = hooks.problem(manifest);
+            if (problem != null) {
+                LOG.warn("Module {}: {}", manifest.id(), problem);
+                continue;
+            }
+            enable(candidate);
+            if (running.stream().anyMatch(m -> m.id().equals(manifest.id()) && !m.failed)) started.add(manifest.id());
+        }
+        List<String> missing = missingRequired(all, id -> running.stream().anyMatch(m -> m.id().equals(id) && !m.failed));
+        if (!missing.isEmpty()) {
+            return CompletableFuture.failedFuture(new ModuleStartException(
+                    "Не запустились модули " + String.join(", ", missing) + ", без них играть на сервере нельзя. Подробнее в логе игры"));
+        }
+        required = all;
+        try {
+            Files.writeString(activeMarker, String.join("\n", all.stream().map(ModuleManifest::id).toList()));
+        } catch (IOException e) {
+            LOG.warn("Cannot write {}", activeMarker, e);
+        }
+        Map<String, Path> assets = new LinkedHashMap<>();
+        for (RunningModule module : running) {
+            if (module.loader != null && ModulePacks.hasAssets(module.jar)) assets.put(module.id(), module.jar);
+        }
+        LOG.info("Modules updated in game, started {}", started);
+        return packs.set(assets).thenApply(done -> List.copyOf(started));
+    }
+
+    private Set<ClassLoader> loaders() {
+        Set<ClassLoader> loaders = new HashSet<>();
+        for (RunningModule module : running) if (module.loader != null) loaders.add(module.loader);
+        return loaders;
     }
 
     /** Used by permanent mixins: an unrelated SDK server must never activate a cached cold mod. */
@@ -522,9 +591,19 @@ public final class ModuleManager {
             }
             if (ref.get() == null) {
                 LOG.info("Module {} is fully unloaded", id);
-            } else {
-                LOG.warn("Module {} is still in memory after unloading: something holds a reference to its classes", id);
+                return;
             }
+            LOG.warn("Module {} is still in memory after unloading: something holds a reference to its classes", id);
+            // Something the game drops a little later, or a real leak: tell which
+            for (int i = 0; i < 55 && ref.get() != null; i++) {
+                System.gc();
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    return;
+                }
+            }
+            LOG.warn(ref.get() == null ? "Module {} is unloaded now, a minute after it stopped" : "Module {} is still in memory a minute after it stopped", id);
         });
     }
 

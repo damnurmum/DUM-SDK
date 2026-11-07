@@ -65,6 +65,11 @@ public final class SdkGameTest implements FabricClientGameTest {
             ColdSessionGameTest.run(context);
             return;
         }
+        if (System.getProperty("dumsdk.hotSwapScenarios") != null) {
+            HotSwapGameTest.scenarios(context, System.getProperty("dumsdk.hotSwap"));
+            context.setScreen(TitleScreen::new);
+            return;
+        }
         String address = System.getProperty("dumsdk.testServer", "localhost");
         context.runOnClient(client -> ConnectScreen.startConnecting(new TitleScreen(), client, ServerAddress.parseString(address),
                 new ServerData("DUM-SDK test", address, ServerData.Type.OTHER), false, null));
@@ -101,6 +106,15 @@ public final class SdkGameTest implements FabricClientGameTest {
             check(AppearanceHooks.equipment(EquipmentRenderLayer.ARMOR, chest[0]) == chest[0], "the armor pass retains the actual chestplate");
         });
         context.takeScreenshot("dum-sdk-joined");
+
+        String staging = System.getProperty("dumsdk.hotSwap");
+        if (staging != null) {
+            HotSwapGameTest.run(context, staging);
+            context.runOnClient(client -> {
+                check(probe[0].getHoverName().getString().equals("Тестовый предмет DUM"), "the swapped sdktest supplies the item name again");
+                check(AppearanceHooks.equipment(EquipmentRenderLayer.WINGS, chest[0]).is(Items.ELYTRA), "the swapped sdktest supplies the wings pass again");
+            });
+        }
 
         // The test player may come back dead (mobs on the test server at night): no screen may take the key press
         context.runOnClient(client -> {

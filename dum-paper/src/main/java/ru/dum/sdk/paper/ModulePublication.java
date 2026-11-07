@@ -25,11 +25,17 @@ final class ModulePublication {
     private final Path snapshots;
     private final Path current;
     private boolean cancelled;
+    private volatile boolean allowDevSigned;
 
     ModulePublication(Path data) {
         staging = data.resolve("modules");
         snapshots = data.resolve("published-modules");
         current = snapshots.resolve("current");
+    }
+
+    /** Whether dev-signed jars are offered (allow-dev-signed in the config); read before each load or publication. */
+    void allowDevSigned(boolean allow) {
+        allowDevSigned = allow;
     }
 
     /** A disabled plugin must not commit an asynchronous publication after its replacement loads. */
@@ -144,11 +150,12 @@ final class ModulePublication {
         return active;
     }
 
-    private static ModuleCatalog validated(Path directory, Logger log) throws IOException {
+    private ModuleCatalog validated(Path directory, Logger log) throws IOException {
         int expected = jars(directory).size();
         ModuleCatalog prepared = new ModuleCatalog();
-        int loaded = prepared.load(directory, log);
-        if (loaded != expected) throw new IOException("Only " + loaded + " of " + expected + " module jars are valid");
+        int loaded = prepared.load(directory, log, allowDevSigned);
+        // A dev-signed jar left out is not an error: the rest is published and players join without it
+        if (loaded + prepared.devSkipped() != expected) throw new IOException("Only " + loaded + " of " + expected + " module jars are valid");
         return prepared;
     }
 

@@ -1,6 +1,9 @@
 package ru.dum.sdk.paper;
 
+import ru.dum.sdk.network.Message;
+
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -15,7 +18,8 @@ final class ModuleAccess {
 
     enum Verdict { DELIVER, DROP, DISCONNECT }
 
-    private record Grant(Set<String> modules, long catalogEpoch) {
+    /** @param jars what exactly was installed, to tell what a later publication changes for this player */
+    private record Grant(Set<String> modules, List<Message.ModuleInfo> jars, long catalogEpoch) {
     }
 
     /** A token bucket: {@code perSecond} messages on average, up to {@code burst} at once. */
@@ -29,8 +33,20 @@ final class ModuleAccess {
     private final Map<UUID, Map<String, Bucket>> buckets = new ConcurrentHashMap<>();
 
     void grant(UUID player, Collection<String> modules, long catalogEpoch) {
-        granted.put(player, new Grant(Set.copyOf(modules), catalogEpoch));
+        granted.put(player, new Grant(Set.copyOf(modules), List.of(), catalogEpoch));
         buckets.remove(player);
+    }
+
+    /** Grants exactly these installed jars. */
+    void grantJars(UUID player, List<Message.ModuleInfo> jars, long catalogEpoch) {
+        granted.put(player, new Grant(Set.copyOf(jars.stream().map(Message.ModuleInfo::id).toList()), List.copyOf(jars), catalogEpoch));
+        buckets.remove(player);
+    }
+
+    /** The jars this player installed, of any catalog epoch; null without a grant. */
+    List<Message.ModuleInfo> jars(UUID player) {
+        Grant grant = granted.get(player);
+        return grant == null ? null : grant.jars;
     }
 
     void forget(UUID player) {

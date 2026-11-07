@@ -27,6 +27,7 @@ class ModulePublicationTest {
     @Test
     void invalidStagedJarCannotReplacePublishedCatalogOrBreakRestart() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(ModulePublicationTest.class);
         var catalog = new ModuleCatalog();
         assertEquals(0, publication.load(catalog, log));
@@ -44,6 +45,7 @@ class ModulePublicationTest {
     @Test
     void selectedIdsReplaceOnlyTheirJarsAndSurviveRestart() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(getClass());
         var catalog = new ModuleCatalog();
         stage("alpha", "1.0.0", "old-name.jar");
@@ -68,6 +70,7 @@ class ModulePublicationTest {
     @Test
     void multipleIdsAndNewColdModArePublishedTogether() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(getClass());
         var catalog = new ModuleCatalog();
         stage("alpha", "1.0.0", "first.jar");
@@ -90,6 +93,7 @@ class ModulePublicationTest {
     @Test
     void failedSelectionNeverChangesLiveCatalogOrPersistentPointer() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(getClass());
         var catalog = new ModuleCatalog();
         stage("alpha", "1.0.0", "first.jar");
@@ -121,6 +125,7 @@ class ModulePublicationTest {
     @Test
     void disabledPublisherCannotReplaceTheCatalogOrPersistentPointer() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(getClass());
         var catalog = new ModuleCatalog();
         stage("alpha", "1.0.0", "first.jar");
@@ -136,6 +141,7 @@ class ModulePublicationTest {
     @Test
     void fullReloadStillPublishesAllStagedChangesAndRemovals() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(getClass());
         var catalog = new ModuleCatalog();
         stage("alpha", "1.0.0", "first.jar");
@@ -151,6 +157,7 @@ class ModulePublicationTest {
     @Test
     void publishingALowerVersionIsReportedAsARollback() throws IOException {
         var publication = new ModulePublication(data);
+        publication.allowDevSigned(true);
         var log = LoggerFactory.getLogger(getClass());
         var catalog = new ModuleCatalog();
         stage("alpha", "2.0.0", "alpha.jar");
@@ -160,6 +167,26 @@ class ModulePublicationTest {
         publication.publish(catalog, log);
         assertEquals(List.of("alpha 1.0.0"), DumSdk.rollbacks(before, catalog.modules()));
         assertEquals(List.of(), DumSdk.rollbacks(catalog.modules(), before));
+    }
+
+    @Test
+    void devSignedJarsAreLeftOutWithoutFailingThePublicationOrRestart() throws IOException {
+        var publication = new ModulePublication(data);
+        var log = LoggerFactory.getLogger(getClass());
+        var catalog = new ModuleCatalog();
+        // The fixtures are signed with the dev key
+        stage("alpha", "1.0.0", "alpha.jar");
+        assertEquals(0, publication.load(catalog, log));
+        publication.allowDevSigned(true);
+        publication.publish(catalog, log);
+        assertEquals(List.of("alpha"), catalog.modules().stream().map(Message.ModuleInfo::id).toList());
+
+        // An old snapshot with a dev-signed module keeps a restarted live server open, without that module
+        var live = new ModulePublication(data);
+        var afterRestart = new ModuleCatalog();
+        assertEquals(0, live.load(afterRestart, log));
+        live.publishSelected(afterRestart, log, List.of("alpha"));
+        assertEquals(0, afterRestart.modules().size());
     }
 
     @Test

@@ -27,6 +27,21 @@ public final class TransferValidation {
         }
     }
 
+    /** The client's mods in HELLO: a bounded list of single lines, logged by the server as they are. */
+    public static void clientMods(List<String> mods) {
+        if (mods == null || mods.size() > Protocol.MAX_CLIENT_MODS
+                || mods.stream().anyMatch(mod -> !diagnosticLine(mod, Protocol.MAX_CLIENT_MOD))) {
+            throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Invalid client mod list");
+        }
+    }
+
+    /** Module IDs in UPDATED. */
+    public static void started(List<String> modules) {
+        if (modules == null || modules.size() > Protocol.MAX_MODULE_COUNT || !modules.stream().allMatch(TransferValidation::moduleId)) {
+            throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Invalid list of started modules");
+        }
+    }
+
     public static void chunk(Message.Chunk chunk) {
         if (chunk.offset() < 0 || chunk.data().length == 0 || chunk.data().length > Protocol.CHUNK_SIZE) {
             throw new ProtocolException(ErrorCode.INVALID_CHUNK, "", "Invalid chunk offset or length");

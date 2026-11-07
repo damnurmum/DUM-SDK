@@ -23,6 +23,7 @@ import ru.dum.sdk.network.Message;
 import ru.dum.sdk.network.Protocol;
 import ru.dum.sdk.paper.api.DumSdkApi;
 import ru.dum.sdk.paper.api.ClientModuleFailureEvent;
+import ru.dum.sdk.paper.api.ClientModulesLoadedEvent;
 import ru.dum.sdk.network.ErrorCode;
 
 import java.io.IOException;
@@ -52,6 +53,9 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
     private final ModuleCatalog catalog = new ModuleCatalog();
     private final ModuleAccess access = new ModuleAccess();
     private ModulePublication publication;
+    private final LiveUpdates updates = new LiveUpdates(this);
+    /** The Fabric mods each player's client said it runs, as "id version", for the log and failure reports. */
+    private final Map<UUID, List<String>> clientMods = new ConcurrentHashMap<>();
     private volatile long catalogEpoch;
     private volatile boolean reloadInProgress;
     /** The published catalog could not be loaded: every join is refused until a publication succeeds. */
@@ -70,6 +74,7 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
         getServer().getPluginManager().registerEvents(this, this);
 
         publication = new ModulePublication(getDataPath());
+        publication.allowDevSigned(getConfig().getBoolean("allow-dev-signed", false));
         try {
             messages.load();
             publication.load(catalog, getSLF4JLogger());
@@ -116,6 +121,8 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
         }
         reloadInProgress = true;
         sender.sendMessage(messages.get("core.publishing"));
+        reloadConfig();
+        publication.allowDevSigned(getConfig().getBoolean("allow-dev-signed", false));
         // Jar copying, signatures and the persistent snapshot are prepared away from the game thread.
         getServer().getScheduler().runTaskAsynchronously(this, () -> {
             ModuleCatalog prepared = new ModuleCatalog();
@@ -137,21 +144,21 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
                 catalogEpoch++;
                 unavailable = false;
                 try {
-                    reloadConfig();
                     messages.load();
                 } catch (IOException e) {
                     getSLF4JLogger().error("Published modules, but could not reload messages", e);
                 } finally {
                     handshake.disable();
                     handshake.enable();
-                    sender.sendMessage(messages.get(selected.isEmpty() ? "core.published" : "core.published-selected",
+                    sender.sendMessage(messages.get(selected.isEmpty() ? "core.updated" : "core.updated-selected",
                             Placeholder.unparsed("count", String.valueOf(catalog.modules().size())),
                             Placeholder.unparsed("modules", String.join(", ", selected))));
                     if (!rollbacks.isEmpty()) {
                         getSLF4JLogger().warn("Published older module versions {}: clients that installed newer ones refuse them", rollbacks);
                         sender.sendMessage(messages.get("core.publish-rollback", Placeholder.unparsed("modules", String.join(", ", rollbacks))));
                     }
-                    for (Player player : List.copyOf(getServer().getOnlinePlayers())) player.kick(messages.get("core.reconnect"));
+                    // Players in game get the new modules without reconnecting
+                    updates.published(catalogEpoch);
                     reloadInProgress = false;
                 }
             });
@@ -167,14 +174,14 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
     }
 
     /**
-     * A plugin reload (plugman) keeps players online. They joined through the handshake with this persistent
-     * published catalog, since every publication disconnects everyone, so their grants are restored.
+     * A plugin reload (plugman) keeps players online. They joined or were updated in game with this persistent
+     * published catalog, so their grants are restored.
      */
     private void restoreOnlineGrants() {
         int restored = 0;
         for (Player player : getServer().getOnlinePlayers()) {
             if (!player.getListeningPluginChannels().contains(Protocol.CHANNEL)) continue;
-            access.grant(player.getUniqueId(), modulesFor(player.getUniqueId()).stream().map(Message.ModuleInfo::id).toList(), catalogEpoch);
+            access.grantJars(player.getUniqueId(), modulesFor(player.getUniqueId()), catalogEpoch);
             restored++;
         }
         if (restored > 0) {
@@ -189,6 +196,16 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
         if (handshake != null) handshake.disable();
         // Plugins still holding this instance after a plugin reload must not reach players through it
         access.clear();
+    }
+
+    /** What this player's client said it runs, "-" if unknown. */
+    String clientMods(UUID player) {
+        List<String> mods = clientMods.get(player);
+        return mods == null || mods.isEmpty() ? "-" : String.join(", ", mods);
+    }
+
+    void clientMods(UUID player, List<String> mods) {
+        clientMods.put(player, List.copyOf(mods));
     }
 
     Messages messages() {
@@ -242,16 +259,18 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
         }
         if (decoded instanceof Message.ModuleFailure failure) {
             if (!access.fail(player.getUniqueId(), failure.module(), catalogEpoch)) return;
-            getSLF4JLogger().warn("[MODULE_RUNTIME] {} reports {} failed in {}: {}",
-                    player.getName(), failure.module(), failure.where(), failure.detail());
+            getSLF4JLogger().warn("[MODULE_RUNTIME] {} reports {} failed in {}: {}; mods: {}",
+                    player.getName(), failure.module(), failure.where(), failure.detail(), clientMods(player.getUniqueId()));
             try {
-                getServer().getPluginManager().callEvent(new ClientModuleFailureEvent(player, failure.module(), failure.where(), failure.detail()));
+                getServer().getPluginManager().callEvent(new ClientModuleFailureEvent(player, failure.module(), failure.where(), failure.detail(),
+                        clientMods.getOrDefault(player.getUniqueId(), List.of())));
             } finally {
                 player.kick(messages.get("runtime.failed", Placeholder.unparsed("module", failure.module()))
                         .append(InstallErrors.code(messages, ErrorCode.MODULE_RUNTIME)));
             }
             return;
         }
+        if (updates.received(player, decoded)) return;
         if (!(decoded instanceof Message.Module(String module, byte[] data))) return;
         Handler handler = moduleHandlers.get(module);
         if (handler == null || !access.has(player.getUniqueId(), module, catalogEpoch)) return;
@@ -279,14 +298,20 @@ public final class DumSdk extends JavaPlugin implements PluginMessageListener, D
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
-        if (!access.current(event.getPlayer().getUniqueId(), catalogEpoch)) {
-            event.getPlayer().kick(messages.get("core.reconnect"));
+        Player player = event.getPlayer();
+        if (!access.current(player.getUniqueId(), catalogEpoch)) {
+            player.kick(messages.get("core.reconnect"));
+            return;
         }
+        List<Message.ModuleInfo> jars = access.jars(player.getUniqueId());
+        getServer().getPluginManager().callEvent(new ClientModulesLoadedEvent(player, jars.stream().map(Message.ModuleInfo::id).toList()));
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         access.forget(event.getPlayer().getUniqueId());
+        updates.quit(event.getPlayer().getUniqueId());
+        clientMods.remove(event.getPlayer().getUniqueId());
         malformedKicks.remove(event.getPlayer().getUniqueId());
     }
 

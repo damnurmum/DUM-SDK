@@ -42,13 +42,21 @@ final class ModuleCatalog {
 
     // ponytail: every jar is kept in memory; fine for a few MB, stream from disk if modules grow large
     private volatile Map<String, Entry> bySha = Map.of();
+    /** Jars of the last {@link #load} left out because they are signed with the dev key. */
+    private int devSkipped;
 
     void replaceWith(ModuleCatalog other) {
         bySha = other.bySha;
     }
 
-    /** Reads the folder; I/O on the calling thread. Returns how many modules are offered. */
-    int load(Path dir, Logger log) {
+    /**
+     * Reads the folder; I/O on the calling thread. Returns how many modules are offered.
+     *
+     * @param allowDevSigned offer dev-signed jars too: only development clients accept them, players' clients would
+     *                       refuse the whole catalog, so a live server leaves them out and lets players in without them
+     */
+    int load(Path dir, Logger log, boolean allowDevSigned) {
+        devSkipped = 0;
         Map<String, Entry> found = new HashMap<>();
         Map<String, String> ids = new HashMap<>();
         try {
@@ -89,6 +97,11 @@ final class ModuleCatalog {
                     continue;
                 }
                 if (Signing.isDevSigned(bytes, signature)) {
+                    if (!allowDevSigned) {
+                        log.warn("Module {} is signed with the dev key, not offered (allow-dev-signed is off)", id);
+                        devSkipped++;
+                        continue;
+                    }
                     log.warn("Module {} is signed with the dev key: only development clients accept it", id);
                 }
                 byte[] sha = Signing.sha256(bytes);
@@ -106,6 +119,10 @@ final class ModuleCatalog {
         }
         bySha = Map.copyOf(found);
         return found.size();
+    }
+
+    int devSkipped() {
+        return devSkipped;
     }
 
     List<Message.ModuleInfo> modules() {

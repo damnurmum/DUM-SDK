@@ -19,3 +19,8 @@ module-messages:
 # Client modules only operators get (module ids). Everyone else never receives the module, cannot download it,
 # and its server side neither hears from nor sends to them.
 ops-only: []
+
+# Offer modules signed with the dev key. Only development clients accept them; players' clients would refuse the
+# whole catalog. Off: such a module is left out with a warning and players join without it. Turn on only on a
+# development server.
+allow-dev-signed: false

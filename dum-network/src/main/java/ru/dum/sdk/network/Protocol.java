@@ -19,11 +19,13 @@ public final class Protocol {
     public static final String CHANNEL = "dum:sdk";
 
     /** Bumped on every incompatible change. HELLO must always start with it, so any server can read it. */
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
 
     public static final int MAX_MODULE_COUNT = 1024;
     public static final int MAX_ERROR_DETAIL = 1024;
     public static final int MAX_FAILURE_CONTEXT = 128;
+    public static final int MAX_CLIENT_MODS = 1024;
+    public static final int MAX_CLIENT_MOD = 200;
 
     /** Jar bytes per {@link Message.Chunk}; a plugin message may carry up to 1 MiB. */
     public static final int CHUNK_SIZE = 512 * 1024;
@@ -40,6 +42,8 @@ public final class Protocol {
     private static final byte READY = 6;
     private static final byte RESTART = 7;
     private static final byte MODULE_FAILURE = 8;
+    private static final byte UPDATE = 9;
+    private static final byte UPDATED = 10;
 
     private static final int SHA256 = 32;
     private static final int SIGNATURE = 64;
@@ -51,10 +55,13 @@ public final class Protocol {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(bytes)) {
             switch (message) {
-                case Message.Hello(int protocol, String sdkVersion) -> {
+                case Message.Hello(int protocol, String sdkVersion, List<String> mods) -> {
+                    TransferValidation.clientMods(mods);
                     out.writeByte(HELLO);
                     out.writeInt(protocol);
                     out.writeUTF(sdkVersion);
+                    out.writeInt(mods.size());
+                    for (String mod : mods) out.writeUTF(mod);
                 }
                 case Message.Welcome(int protocol, String serverVersion) -> {
                     out.writeByte(WELCOME);
@@ -62,17 +69,18 @@ public final class Protocol {
                     out.writeUTF(serverVersion);
                 }
                 case Message.Catalog(List<Message.ModuleInfo> modules) -> {
-                    TransferValidation.catalog(modules);
                     out.writeByte(CATALOG);
+                    writeModules(out, modules);
+                }
+                case Message.Update(List<Message.ModuleInfo> modules) -> {
+                    out.writeByte(UPDATE);
+                    writeModules(out, modules);
+                }
+                case Message.Updated(List<String> modules) -> {
+                    TransferValidation.started(modules);
+                    out.writeByte(UPDATED);
                     out.writeInt(modules.size());
-                    for (Message.ModuleInfo module : modules) {
-                        out.writeUTF(module.id());
-                        out.writeUTF(module.version());
-                        writeFixed(out, module.sha256(), SHA256);
-                        out.writeInt(module.size());
-                        writeFixed(out, module.signature(), SIGNATURE);
-                        out.writeBoolean(module.fabricMod());
-                    }
+                    for (String module : modules) out.writeUTF(module);
                 }
                 case Message.Request(byte[] sha256) -> {
                     out.writeByte(REQUEST);
@@ -132,18 +140,26 @@ public final class Protocol {
         DataInputStream in = new DataInputStream(new ByteArrayInputStream(data));
         try {
             Message message = switch (in.readByte()) {
-                case HELLO -> new Message.Hello(in.readInt(), in.readUTF());
-                case WELCOME -> new Message.Welcome(in.readInt(), in.readUTF());
-                case CATALOG -> {
+                case HELLO -> {
+                    int protocol = in.readInt();
+                    String sdkVersion = in.readUTF();
                     int count = in.readInt();
-                    if (count < 0 || count > MAX_MODULE_COUNT) throw new ProtocolException(ErrorCode.INVALID_CATALOG, "", "Bad module count " + count);
-                    List<Message.ModuleInfo> modules = new ArrayList<>(count);
-                    for (int i = 0; i < count; i++) {
-                        modules.add(new Message.ModuleInfo(in.readUTF(), in.readUTF(), readFixed(in, SHA256), in.readInt(),
-                                readFixed(in, SIGNATURE), readModFlag(in)));
-                    }
-                    TransferValidation.catalog(modules);
-                    yield new Message.Catalog(List.copyOf(modules));
+                    if (count < 0 || count > MAX_CLIENT_MODS) throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Bad client mod count " + count);
+                    List<String> mods = new ArrayList<>(count);
+                    for (int i = 0; i < count; i++) mods.add(in.readUTF());
+                    TransferValidation.clientMods(mods);
+                    yield new Message.Hello(protocol, sdkVersion, List.copyOf(mods));
+                }
+                case WELCOME -> new Message.Welcome(in.readInt(), in.readUTF());
+                case CATALOG -> new Message.Catalog(readModules(in));
+                case UPDATE -> new Message.Update(readModules(in));
+                case UPDATED -> {
+                    int count = in.readInt();
+                    if (count < 0 || count > MAX_MODULE_COUNT) throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Bad module count " + count);
+                    List<String> modules = new ArrayList<>(count);
+                    for (int i = 0; i < count; i++) modules.add(in.readUTF());
+                    TransferValidation.started(modules);
+                    yield new Message.Updated(List.copyOf(modules));
                 }
                 case REQUEST -> new Message.Request(readFixed(in, SHA256));
                 case CHUNK -> {
@@ -178,6 +194,31 @@ public final class Protocol {
         } catch (IOException e) {
             throw new ProtocolException(ErrorCode.MALFORMED_MESSAGE, "", "Truncated message");
         }
+    }
+
+    private static void writeModules(DataOutputStream out, List<Message.ModuleInfo> modules) throws IOException {
+        TransferValidation.catalog(modules);
+        out.writeInt(modules.size());
+        for (Message.ModuleInfo module : modules) {
+            out.writeUTF(module.id());
+            out.writeUTF(module.version());
+            writeFixed(out, module.sha256(), SHA256);
+            out.writeInt(module.size());
+            writeFixed(out, module.signature(), SIGNATURE);
+            out.writeBoolean(module.fabricMod());
+        }
+    }
+
+    private static List<Message.ModuleInfo> readModules(DataInputStream in) throws IOException {
+        int count = in.readInt();
+        if (count < 0 || count > MAX_MODULE_COUNT) throw new ProtocolException(ErrorCode.INVALID_CATALOG, "", "Bad module count " + count);
+        List<Message.ModuleInfo> modules = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            modules.add(new Message.ModuleInfo(in.readUTF(), in.readUTF(), readFixed(in, SHA256), in.readInt(),
+                    readFixed(in, SIGNATURE), readModFlag(in)));
+        }
+        TransferValidation.catalog(modules);
+        return List.copyOf(modules);
     }
 
     private static boolean readModFlag(DataInputStream in) throws IOException {

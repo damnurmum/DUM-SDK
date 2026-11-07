@@ -45,6 +45,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
 /** Client entry point: the handshake with a DUM-SDK server, its modules and the connection status in the pause menu. */
 public final class DumSdkClient implements ClientModInitializer {
@@ -68,6 +71,10 @@ public final class DumSdkClient implements ClientModInitializer {
     private record Attempt(PacketContext owner, long generation, ClientConfigurationPacketListenerImpl listener,
                            ModuleInstaller installer) { }
     private static volatile @Nullable Attempt attempt;
+    /** Downloads and checks of updates in play, away from the render thread, one message after another. */
+    private static final ExecutorService UPDATES = Executors.newSingleThreadExecutor(Thread.ofPlatform().daemon().name("DUM-SDK updates").factory());
+    /** The latest update in play: an older one still running may not send or start anything. */
+    private static final AtomicLong UPDATE = new AtomicLong();
 
     @Override
     public void onInitializeClient() {
@@ -86,7 +93,7 @@ public final class DumSdkClient implements ClientModInitializer {
             // Paper does not announce its channels during configuration, so Fabric never announces ours
             // and Paper would drop every message sent to us. Announce dum:sdk ourselves, before HELLO.
             ClientConfigurationNetworking.send(new RegistrationPayload(RegistrationPayload.REGISTER, List.of(SdkPayload.TYPE.id())));
-            ClientConfigurationNetworking.send(new SdkPayload(Protocol.encode(new Message.Hello(Protocol.VERSION, VERSION))));
+            ClientConfigurationNetworking.send(new SdkPayload(Protocol.encode(new Message.Hello(Protocol.VERSION, VERSION, ownMods()))));
         });
         ClientConfigurationConnectionEvents.DISCONNECT.register((listener, client) -> {
             Attempt current = attempt;
@@ -181,9 +188,52 @@ public final class DumSdkClient implements ClientModInitializer {
                 (jars, mods) -> CompletableFuture.supplyAsync(() -> {
                     if (!SESSION.current(generation)) return CompletableFuture.<Void>failedFuture(new CancellationException());
                     return MODULES.start(jars, mods);
-                }, client).thenCompose(started -> started).thenRun(() -> SESSION.installed(generation)),
-                () -> SESSION.current(generation));
+                }, client).thenCompose(started -> started).thenApply(started -> {
+                    SESSION.installed(generation);
+                    return List.<String>of();
+                }),
+                () -> SESSION.current(generation), false);
         attempt = new Attempt(listener.getPacketContext(), generation, listener, installer);
+    }
+
+    /**
+     * A publication while we play: the server's new catalog. The changed modules are downloaded and swapped
+     * without reconnecting; the server hears UPDATED, or RESTART when its Fabric mods change.
+     */
+    private static void update(Attempt current, List<Message.ModuleInfo> modules) {
+        Minecraft client = Minecraft.getInstance();
+        long generation = current.generation, id = UPDATE.incrementAndGet();
+        java.util.function.BooleanSupplier latest = () -> SESSION.current(generation) && SESSION.active() && UPDATE.get() == id;
+        ModuleInstaller installer = new ModuleInstaller(ROOT, COLD_MODS,
+                message -> client.execute(() -> {
+                    if (!latest.getAsBoolean() || client.getConnection() == null) return;
+                    if (message instanceof Message.Ready ready && ready.code() != ErrorCode.OK) {
+                        recordError(ready.code().name(), "Модуль: " + ready.module() + ". " + ready.detail());
+                    }
+                    ClientPlayNetworking.send(new SdkPayload(Protocol.encode(message)));
+                }),
+                (jars, mods) -> CompletableFuture.supplyAsync(() -> {
+                    if (!latest.getAsBoolean()) return CompletableFuture.<List<String>>failedFuture(new CancellationException());
+                    return MODULES.update(jars, mods);
+                }, client).thenCompose(started -> started).thenApplyAsync(started -> {
+                    if (!started.isEmpty()) {
+                        SystemToast.addOrUpdate(client.gui.toastManager(), UPDATE_TOAST, Component.literal("Модули DUM-SDK обновлены"),
+                                Component.literal(String.join(", ", started)));
+                    }
+                    return started;
+                }, client),
+                latest, true);
+        attempt = new Attempt(current.owner, generation, current.listener, installer);
+        LOG.info("The server published new modules, updating in game");
+        UPDATES.execute(() -> installer.catalog(modules));
+    }
+
+    /** This client's own Fabric mods as "id version", for the server's log: no nested jars or built-in ones. */
+    private static List<String> ownMods() {
+        return FabricLoader.getInstance().getAllMods().stream()
+                .filter(mod -> mod.getContainingMod().isEmpty() && !"builtin".equals(mod.getMetadata().getType()))
+                .map(mod -> TransferValidation.cleanLine(mod.getMetadata().getId() + " " + mod.getMetadata().getVersion().getFriendlyString(), Protocol.MAX_CLIENT_MOD))
+                .sorted().limit(Protocol.MAX_CLIENT_MODS).toList();
     }
 
     /** Read on the client thread; file contents and player chat are excluded from the copyable summary. */
@@ -330,6 +380,11 @@ public final class DumSdkClient implements ClientModInitializer {
             }
             case Message.Chunk chunk -> {
                 if (configuration && SESSION.downloading(owner)) current.installer.chunk(chunk);
+                else if (!configuration && SESSION.active()) UPDATES.execute(() -> current.installer.chunk(chunk));
+            }
+            // Play phase, render thread: a publication while we play
+            case Message.Update update -> {
+                if (!configuration && SESSION.active()) update(current, update.modules());
             }
             // Play-phase payloads already arrive on the render thread
             case Message.Module module -> {
@@ -340,6 +395,7 @@ public final class DumSdkClient implements ClientModInitializer {
             case Message.Ready ready -> LOG.warn("Ignoring unexpected {} from the server", ready.getClass().getSimpleName());
             case Message.Restart restart -> LOG.warn("Ignoring unexpected {} from the server", restart.getClass().getSimpleName());
             case Message.ModuleFailure failure -> LOG.warn("Ignoring unexpected {} from the server", failure.getClass().getSimpleName());
+            case Message.Updated updated -> LOG.warn("Ignoring unexpected {} from the server", updated.getClass().getSimpleName());
         }
     }
 
