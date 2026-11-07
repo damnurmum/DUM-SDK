@@ -2,7 +2,7 @@
 
 <img src="docs/images/social-preview.png" alt="DUM-SDK: signed client modules for a Minecraft server" width="520">
 
-<br>
+&nbsp;
 
 A Fabric client mod and a Paper plugin: the server hands its players client-side modules when they join, and swaps them in game when it publishes new ones.
 
